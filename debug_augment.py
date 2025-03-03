@@ -136,6 +136,8 @@ for i, item in enumerate(images_info[:NUM_AUGMENTATIONS]):
         image=image, 
         processed_bboxes=processed_bboxes, 
         class_labels=class_labels,
+        resized_shape=(640, 640),
+        ori_shape=(640, 640)
     )
     
     # Ensure returned values are numpy float32 arrays.

@@ -86,7 +86,7 @@ class SelectiveCopyPaste(A.DualTransform):
                     return False
         return True
 
-    def apply(self, image, bboxes, class_labels):
+    def apply(self, image, bboxes, class_labels, resized_shape=None, ori_shape=None):
         """
         Paste object crops onto the image while avoiding overlap with existing
         or previously pasted objects of class self.object_class.
@@ -95,6 +95,8 @@ class SelectiveCopyPaste(A.DualTransform):
             image (np.ndarray): The target (grayscale) image.
             bboxes (np.ndarray): Array of bounding boxes (each as [x1, y1, x2, y2]) in pixel coordinates.
             class_labels (np.ndarray): Array of class labels corresponding to each bbox.
+            resized_shape (tuple, optional): The shape (height, width) of the resized template image.
+            ori_shape (tuple, optional): The original shape (height, width) of the template image.
             
         Returns:
             tuple: (image (np.ndarray), updated_bboxes (np.ndarray), updated_class_labels (np.ndarray))
@@ -115,6 +117,20 @@ class SelectiveCopyPaste(A.DualTransform):
             obj_img = cv2.imread(obj_file, cv2.IMREAD_UNCHANGED)
             assert obj_img is not None
             assert obj_img.shape[-1] == 4, "Object image must have 4 channels (BGR + alpha)."
+
+            # Immediately after reading, resize the object if the template image was resized.
+            if resized_shape is not None and ori_shape is not None:
+                assert isinstance(resized_shape, (tuple, list)) and len(resized_shape) == 2, \
+                    "resized_shape must be a tuple of (height, width)"
+                assert isinstance(ori_shape, (tuple, list)) and len(ori_shape) == 2, \
+                    "ori_shape must be a tuple of (height, width)"
+                ori_h, ori_w = ori_shape
+                resized_h, resized_w = resized_shape
+                scale_w = resized_w / ori_w
+                scale_h = resized_h / ori_h
+                new_obj_w = int(obj_img.shape[1] * scale_w)
+                new_obj_h = int(obj_img.shape[0] * scale_h)
+                obj_img = cv2.resize(obj_img, (new_obj_w, new_obj_h), interpolation=cv2.INTER_LINEAR)
 
             # Apply the augmentation pipeline to the cropped object.
             obj_img = augment_crop(obj_img)
@@ -266,7 +282,13 @@ class SelectiveCopyPaste(A.DualTransform):
             bboxes_labels = class_labels_input
             bboxes_coords = np.empty((0, 4), dtype=np.float32)
 
-        image_aug, updated_bboxes, updated_class_labels = self.apply(image, bboxes_coords, class_labels=bboxes_labels)
+        image_aug, updated_bboxes, updated_class_labels = self.apply(
+            image,
+            bboxes_coords,
+            class_labels=bboxes_labels,
+            resized_shape=kwargs.get("resized_shape"),
+            ori_shape=kwargs.get("ori_shape")
+        )
         if updated_bboxes.shape[0] > 0:
             merged = np.hstack((updated_bboxes, updated_class_labels.reshape(-1, 1)))
         else:
@@ -332,7 +354,7 @@ copy_paste_tag = A.Compose(
 
 
 
-def apply_copy_paste_augmentations(image, processed_bboxes, class_labels):
+def apply_copy_paste_augmentations(image, processed_bboxes, class_labels, resized_shape=None, ori_shape=None):
     """
     Applies hand and tag copy-paste augmentations to the given image.
     
@@ -372,6 +394,8 @@ def apply_copy_paste_augmentations(image, processed_bboxes, class_labels):
         image=image, 
         bboxes=processed_bboxes, 
         class_labels=class_labels,
+        resized_shape=resized_shape,
+        ori_shape=ori_shape
     )
     hand_aug_image_inhouse = hand_augmented_inhouse["image"]
     hand_aug_bboxes_inhouse = hand_augmented_inhouse["bboxes"]
@@ -382,6 +406,8 @@ def apply_copy_paste_augmentations(image, processed_bboxes, class_labels):
         image=hand_aug_image_inhouse, 
         bboxes=hand_aug_bboxes_inhouse, 
         class_labels=hand_aug_class_labels_inhouse,
+        resized_shape=resized_shape,
+        ori_shape=ori_shape
     )
 
     hand_aug_image_public = hand_augmented_public["image"]
@@ -393,6 +419,8 @@ def apply_copy_paste_augmentations(image, processed_bboxes, class_labels):
         image=hand_aug_image_public, 
         bboxes=hand_aug_bboxes_public, 
         class_labels=hand_aug_class_labels_public,
+        resized_shape=resized_shape,
+        ori_shape=ori_shape
     )
     
     final_aug_image = tag_augmented["image"]

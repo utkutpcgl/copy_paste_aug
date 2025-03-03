@@ -120,6 +120,8 @@ from ultralytics.data.cpp_utils.simple_copy_paste import apply_copy_paste_augmen
                 label["img"],
                 label["instances"].bboxes,
                 label["cls"],
+                resized_shape=label["resized_shape"],
+                ori_shape=label["ori_shape"]
             )
             assert label["img"].ndim == prev_ndim, "Image ndim changed after copy paste augmentation."
             # NOTE calling update() automatically updates bbox_areas.
