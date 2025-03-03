@@ -142,8 +142,3 @@ To enable visualization, add the following to `ultralytics/cfg/default.yaml`:
 ```yaml
 visualization_path: "/path/to/save/visualizations"
 ```
-
-
-
-
-# copy_paste_aug
