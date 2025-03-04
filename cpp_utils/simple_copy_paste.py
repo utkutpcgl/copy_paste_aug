@@ -17,7 +17,8 @@ class SelectiveCopyPaste(A.DualTransform):
         max_attempts=20,
         p=1,
         always_apply=False,
-        class_id=None
+        class_id=None,
+        obj_size_scale=1
     ):
         """
         Args:
@@ -35,7 +36,7 @@ class SelectiveCopyPaste(A.DualTransform):
         self.blend = blend
         self.sigma = sigma
         self.max_attempts = max_attempts
-
+        self.obj_size_scale = obj_size_scale
         # Preload list of valid image files.
         self.object_files = [
             os.path.join(folder, f)
@@ -128,8 +129,8 @@ class SelectiveCopyPaste(A.DualTransform):
                 resized_h, resized_w = resized_shape
                 scale_w = resized_w / ori_w
                 scale_h = resized_h / ori_h
-                new_obj_w = int(obj_img.shape[1] * scale_w)
-                new_obj_h = int(obj_img.shape[0] * scale_h)
+                new_obj_w = int(obj_img.shape[1] * scale_w * self.obj_size_scale)
+                new_obj_h = int(obj_img.shape[0] * scale_h * self.obj_size_scale)
                 obj_img = cv2.resize(obj_img, (new_obj_w, new_obj_h), interpolation=cv2.INTER_LINEAR)
 
             # Apply the augmentation pipeline to the cropped object.
@@ -316,7 +317,8 @@ copy_paste_hand_inhouse = A.Compose(
             sigma=2, # The size of the gaussian kernel for blending. The larger the more smooth the blending, the more transparent the pasted object.
             max_attempts=20,
             p=0.3,
-            class_id = 3
+            class_id = 3,
+            obj_size_scale=1.7
         )
     ],
     bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
@@ -331,7 +333,8 @@ copy_paste_hand_public = A.Compose(
             sigma=2, # The size of the gaussian kernel for blending. The larger the more smooth the blending, the more transparent the pasted object.
             max_attempts=20,
             p=0.6,
-            class_id = 3
+            class_id = 3,
+            obj_size_scale=1.7
         )
     ],
     bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
@@ -346,7 +349,8 @@ copy_paste_tag = A.Compose(
             sigma=2, # The size of the gaussian kernel for blending. The larger the more smooth the blending, the more transparent the pasted object.
             max_attempts=20,
             p=0.9,
-            class_id = 1
+            class_id = 1,
+            obj_size_scale=1
         )
     ],
     bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
