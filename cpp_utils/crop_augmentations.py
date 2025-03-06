@@ -5,12 +5,18 @@ import numpy as np
 import os
 import time
 import shutil
+import yaml
 
+# Remove previously saved debug crops and create the folder.
 DEBUG_FOLDER_CROPS = "debug_augmented_objects"
 if os.path.exists(DEBUG_FOLDER_CROPS):
     shutil.rmtree(DEBUG_FOLDER_CROPS)
 os.makedirs(DEBUG_FOLDER_CROPS, exist_ok=True)
 
+
+# -----------------------------------------------------------------------------
+# Custom transforms as defined previously.
+# -----------------------------------------------------------------------------
 # Custom rotation that expands the image canvas so that the entire rotated image fits.
 class RotateWithExpansion(A.DualTransform):
     def __init__(self, limit=(-90, 90), border_mode=cv2.BORDER_CONSTANT, 
@@ -27,9 +33,7 @@ class RotateWithExpansion(A.DualTransform):
         return {"angle": angle}
 
     def apply(self, img, angle=0, **kwargs):
-        # Assuming img.shape is (h, w, channels)
         (h, w) = img.shape[:2]
-        # Define the center and compute the rotation matrix.
         center = (w / 2, h / 2)
         rot_mat = cv2.getRotationMatrix2D(center, angle, 1.0)
 
@@ -59,33 +63,7 @@ class RotateWithExpansion(A.DualTransform):
     def get_transform_init_args_names(self):
         return ("limit", "border_mode", "value", "mask_value", "p")
 
-# 1. Pixel-Level Transforms (applied only on the RGB image)
-pixel_transforms = A.Compose([
-    A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.3),
-    A.HueSaturationValue(hue_shift_limit=20, sat_shift_limit=30, val_shift_limit=20, p=0.3),
-    A.RGBShift(r_shift_limit=10, g_shift_limit=10, b_shift_limit=10, p=0.2),
-    A.GaussianBlur(p=0.2),
-    A.GaussNoise(std_range=(0.03,0.15), p=0.2),
-    A.ImageCompression(quality_range=(75, 100), p=0.2),
-    A.CLAHE(clip_limit=2, tile_grid_size=(8,8), p=0.2)
-])
-
-# 2. Spatial-Level Transforms (applied to image and alpha mask synchronously)
-spatial_transforms = A.Compose([
-    A.HorizontalFlip(p=0.5),
-    RotateWithExpansion(limit=(-90, 90), p=1),
-    A.Affine(
-        translate_percent=(-0.0625, 0.0625),
-        scale=(0.9, 1.1),
-        rotate=(-15, 15),
-        border_mode=cv2.BORDER_CONSTANT,
-        p=0.5
-    ),
-    A.Perspective(scale=(0.05, 0.1), p=0.2)
-])
-
-
-# 3. Custom Random Resize transform that preserves aspect ratio.
+# Custom Random Resize transform that preserves aspect ratio.
 class RandomResize(A.DualTransform):
     def __init__(self, scale_range=(0.2, 2), p=0.5):
         super(RandomResize, self).__init__(p)
@@ -106,7 +84,7 @@ class RandomResize(A.DualTransform):
     def get_transform_init_args_names(self):
         return ("min_scale", "max_scale", "p")
 
-# 4. Custom Random Crop transform; crops randomly down to a percentage of the original area.
+# Custom Random Crop transform; crops randomly down to a percentage of the original area.
 class RandomCropCustom(A.DualTransform):
     def __init__(self, min_crop=0.75, p=0.5):
         super(RandomCropCustom, self).__init__(p)
@@ -128,13 +106,144 @@ class RandomCropCustom(A.DualTransform):
     def get_transform_init_args_names(self):
         return ("min_crop", "p")
 
-# Instantiate our custom transforms.
-resize_transform = RandomResize(scale_range=(0.3, 1.2), p=1)
-random_crop = RandomCropCustom(min_crop=0.75, p=0.6)
 
-def augment_crop(obj_img):
+
+# -----------------------------------------------------------------------------
+# Load configuration parameters from the central config.yaml.
+# -----------------------------------------------------------------------------
+# The config file is located at: copy-paste-aug/simple_cpp/cpp_utils/config.yaml
+CFG_PATH = os.path.join(os.path.dirname(__file__), 'config.yaml')
+assert os.path.exists(CFG_PATH), f"Configuration file not found at {CFG_PATH}"
+with open(CFG_PATH, 'r') as f:
+    config = yaml.safe_load(f)
+
+crop_config = config.get("crop_augmentations", {})
+# Get pixel-level transforms config.
+pixel_config = crop_config.get("pixel_transforms", {})
+rb_config = pixel_config.get("random_brightness_contrast", {})
+hs_config = pixel_config.get("hue_saturation_value", {})
+rgb_config = pixel_config.get("rgb_shift", {})
+gb_config = pixel_config.get("gaussian_blur", {})
+gn_config = pixel_config.get("gauss_noise", {})
+ic_config = pixel_config.get("image_compression", {})
+clahe_config = pixel_config.get("clahe", {})
+
+# Build the pixel-level transforms using config parameters.
+pixel_transforms = A.Compose([
+    A.RandomBrightnessContrast(
+        brightness_limit=rb_config.get("brightness_limit", 0.2),
+        contrast_limit=rb_config.get("contrast_limit", 0.2),
+        p=rb_config.get("p", 0.3)
+    ),
+    A.HueSaturationValue(
+        hue_shift_limit=hs_config.get("hue_shift_limit", 20),
+        sat_shift_limit=hs_config.get("sat_shift_limit", 30),
+        val_shift_limit=hs_config.get("val_shift_limit", 20),
+        p=hs_config.get("p", 0.3)
+    ),
+    A.RGBShift(
+        r_shift_limit=rgb_config.get("r_shift_limit", 10),
+        g_shift_limit=rgb_config.get("g_shift_limit", 10),
+        b_shift_limit=rgb_config.get("b_shift_limit", 10),
+        p=rgb_config.get("p", 0.2)
+    ),
+    A.GaussianBlur(p=gb_config.get("p", 0.2)),
+    A.GaussNoise(
+        std_range=tuple(gn_config.get("std_range", [0.03, 0.15])),
+        p=gn_config.get("p", 0.2)
+    ),
+    A.ImageCompression(
+        quality_range=tuple(ic_config.get("quality_range", [75, 100])),
+        p=ic_config.get("p", 0.2)
+    ),
+    A.CLAHE(
+        clip_limit=clahe_config.get("clip_limit", 2),
+        tile_grid_size=tuple(clahe_config.get("tile_grid_size", [8, 8])),
+        p=clahe_config.get("p", 0.2)
+    )
+])
+
+# Get spatial-level transforms config.
+spatial_config = crop_config.get("spatial_transforms", {})
+hf_config = spatial_config.get("horizontal_flip", {})
+rwe_config = spatial_config.get("rotate_with_expansion", {})
+affine_config = spatial_config.get("affine", {})
+persp_config = spatial_config.get("perspective", {})
+
+# Prepare parameters for RotateWithExpansion.
+rwe_limit = tuple(rwe_config.get("limit", [-90, 90]))
+rwe_border_mode_str = rwe_config.get("border_mode", "BORDER_CONSTANT")
+rwe_border_mode = getattr(cv2, rwe_border_mode_str)
+rwe_value = tuple(rwe_config.get("value", [0, 0, 0, 0]))
+rwe_mask_value = tuple(rwe_config.get("mask_value", [0, 0, 0, 0]))
+rwe_p = rwe_config.get("p", 1)
+
+# Prepare parameters for Affine transform.
+affine_translate = tuple(affine_config.get("translate_percent", [-0.0625, 0.0625]))
+affine_scale = tuple(affine_config.get("scale", [0.9, 1.1]))
+affine_rotate = tuple(affine_config.get("rotate", [-15, 15]))
+affine_border_mode_str = affine_config.get("border_mode", "BORDER_CONSTANT")
+affine_border_mode = getattr(cv2, affine_border_mode_str)
+affine_p = affine_config.get("p", 0.5)
+
+# Prepare parameters for Perspective transform.
+persp_scale = tuple(persp_config.get("scale", [0.05, 0.1]))
+persp_p = persp_config.get("p", 0.2)
+
+# Get random resize/crop config.
+random_resize_config = crop_config.get("random_resize", {})
+random_crop_config = crop_config.get("random_crop", {})
+
+
+# -----------------------------------------------------------------------------
+# Instantiate our custom transforms.
+# -----------------------------------------------------------------------------
+spatial_transforms = A.Compose([
+    A.HorizontalFlip(p=hf_config.get("p", 0.5)),
+    # Affine and Perspective are defined using parameters from the configuration.
+    # Note: The custom RotateWithExpansion transform is used instead of Albumentations built-in rotation.
+    # See the custom class below.
+    # We pass the loaded config values.
+    # The p value for RotateWithExpansion is set in rwe_p.
+    # Similarly for Affine and Perspective.
+    # The cv2 border-mode strings are converted with getattr.
+    # RotateWithExpansion is defined later in this file.
+    # It rotates the image with expansion so that the entire image fits.
+    # -----------------------------------------------------------------------------
+    # Use custom RotateWithExpansion (defined below).
+    RotateWithExpansion(limit=rwe_limit, border_mode=rwe_border_mode, value=rwe_value, mask_value=rwe_mask_value, p=rwe_p),
+    A.Affine(
+        translate_percent=affine_translate,
+        scale=affine_scale,
+        rotate=affine_rotate,
+        border_mode=affine_border_mode,
+        p=affine_p
+    ),
+    A.Perspective(
+        scale=persp_scale,
+        p=persp_p
+    )
+])
+
+resize_transform = RandomResize(
+    scale_range=tuple(random_resize_config.get("scale_range", [0.3, 1.2])),
+    p=random_resize_config.get("p", 1)
+)
+
+
+random_crop = RandomCropCustom(
+    min_crop=random_crop_config.get("min_crop", 0.75),
+    p=random_crop_config.get("p", 0.6)
+)
+
+
+# -----------------------------------------------------------------------------
+# The augment_crop function remains mostly the same, but now uses the updated transforms.
+# -----------------------------------------------------------------------------
+def augment_crop(obj_img, debug_crops=False):
     """
-    Applies all the augmentations defined in the augmentation menu to the cropped segmentation.
+    Applies all the augmentations defined in the augmentation menu (loaded from config)
+    to the cropped segmentation.
 
     Args:
         obj_img (np.ndarray): Cropped object image with 4 channels (BGR + alpha).
@@ -144,7 +253,7 @@ def augment_crop(obj_img):
     """
     if not obj_img.shape[-1] == 4:
         print("Object image must have 4 channels (BGR + alpha). Returning None. Object shape: ", obj_img.shape)
-        return None # else return NONE, dont copy paste this object
+        return None  # Return None if requirements are not met.
     
     # Separate the BGR image and the alpha mask.
     bgr_img = obj_img[:, :, :3]
@@ -166,7 +275,7 @@ def augment_crop(obj_img):
     cropped_resized_spatial_pixel_image = random_crop(image=resized_spatial_pixel_image)['image']
 
     # Crop the image so that only the actual object is strictly cropped,
-    # based on the alpha mask. Transparent pixels should not be filling the box edges.
+    # based on the alpha mask. Transparent pixels should not fill the box edges.
     alpha_final = cropped_resized_spatial_pixel_image[:, :, 3]
     ys, xs = np.where(alpha_final > 0)
     
@@ -179,6 +288,7 @@ def augment_crop(obj_img):
     x_min, x_max = xs.min(), xs.max()
     cropped_resized_spatial_pixel_image = cropped_resized_spatial_pixel_image[y_min:y_max+1, x_min:x_max+1]
 
-    # NOTE Save the augmented object to a folder for debugging. Uncomment to save. But stores a lot of images.
-    # cv2.imwrite(f"{DEBUG_FOLDER_CROPS}/augmented_object_{time.time()}.png", cropped_resized_spatial_pixel_image)
+    # Save the augmented object for debugging if required.
+    if debug_crops:
+        cv2.imwrite(f"{DEBUG_FOLDER_CROPS}/augmented_object_{time.time()}.png", cropped_resized_spatial_pixel_image)
     return cropped_resized_spatial_pixel_image 

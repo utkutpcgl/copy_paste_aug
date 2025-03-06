@@ -1,0 +1,104 @@
+# cfg/config.yaml
+
+# Global configuration for Copy-Paste Augmentation for YOLOv8
+
+augmentation:
+  # Visualization settings:
+  # visualization_path: "visualizations"  # Path to save augmented images. Uncomment this if you want to save augmented images.
+  debug_crops: false             # Set to true if you want to save individual augmented object crops for debugging.
+
+  # Copy-Paste Augmentation Pipelines:
+  copy_paste:
+    hands_inhouse:
+      folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_inhouse"
+      max_paste_objects: 2
+      blend: true
+      sigma: 2
+      max_attempts: 20
+      p: 0.3
+      class_id: 3
+      obj_size_scale: 1.7
+      max_occlude_ratio: 0.5
+    hands_public:
+      folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_public"
+      max_paste_objects: 5
+      blend: true
+      sigma: 2
+      max_attempts: 20
+      p: 0.6
+      class_id: 3
+      obj_size_scale: 1.7
+      max_occlude_ratio: 0.5
+    tags:
+      folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/tags"
+      max_paste_objects: 7
+      blend: true
+      sigma: 2
+      max_attempts: 20
+      p: 0.9
+      class_id: 0
+      obj_size_scale: 1.0
+      max_occlude_ratio: 0.5
+
+# Crop augmentation pipelines parameters.
+crop_augmentations:
+  pixel_transforms:
+    random_brightness_contrast:
+      brightness_limit: 0.2
+      contrast_limit: 0.2
+      p: 0.3
+    hue_saturation_value:
+      hue_shift_limit: 20
+      sat_shift_limit: 30
+      val_shift_limit: 20
+      p: 0.3
+    rgb_shift:
+      r_shift_limit: 10
+      g_shift_limit: 10
+      b_shift_limit: 10
+      p: 0.2
+    gaussian_blur:
+      p: 0.2
+    gauss_noise:
+      std_range: [0.03, 0.15]
+      p: 0.2
+    image_compression:
+      quality_range: [75, 100]
+      p: 0.2
+    clahe:
+      clip_limit: 2
+      tile_grid_size: [8, 8]
+      p: 0.2
+
+  spatial_transforms:
+    horizontal_flip:
+      p: 0.5
+    rotate_with_expansion:
+      limit: [-90, 90]
+      border_mode: "BORDER_CONSTANT"
+      value: [0, 0, 0, 0]
+      mask_value: [0, 0, 0, 0]
+      p: 1
+    affine:
+      translate_percent: [-0.0625, 0.0625]
+      scale: [0.9, 1.1]
+      rotate: [-15, 15]
+      border_mode: "BORDER_CONSTANT"
+      p: 0.5
+    perspective:
+      scale: [0.05, 0.1]
+      p: 0.2
+
+  random_resize:
+    scale_range: [0.3, 1.2]
+    p: 1
+
+  random_crop:
+    min_crop: 0.75
+    p: 0.6
+
+# Debugging specific configuration. Only for debug_augment.py.
+debug:
+  dataset_yaml: "/home/utkutopcuoglu/Projects/Datasets/person_datasets/person_data.yaml" # Path to the dataset YAML file for visualization.
+  num_augmentations: 100                             # Number of augmented samples to generate per image.
+  debug_folder: "debug"                              # Debug folder where augmented images will be saved.

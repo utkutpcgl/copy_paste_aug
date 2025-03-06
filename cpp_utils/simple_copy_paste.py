@@ -5,7 +5,30 @@ import numpy as np
 from skimage.filters import gaussian
 import albumentations as A
 from cpp_utils.crop_augmentations import augment_crop
+import yaml
 # visualization_path: /home/utkutopcuoglu/Projects/ebis/copy-paste-aug/visualization # (str) path to save the visualization images
+
+# Load configuration for augmentation from the central config.yaml.
+CFG_PATH = os.path.join(os.path.dirname(__file__), 'config.yaml')
+assert os.path.exists(CFG_PATH), f"Configuration file not found at {CFG_PATH}"
+with open(CFG_PATH, 'r') as f:
+    global_config = yaml.safe_load(f)
+VISUALIZATION_PATH = global_config.get("visualization_path", None)
+if VISUALIZATION_PATH:
+    os.makedirs(VISUALIZATION_PATH, exist_ok=True)
+
+# Extract augmentation configuration.
+augmentation_config = global_config.get("augmentation", {})
+DEBUG_CROPS_CONFIG = augmentation_config.get("debug_crops", False)
+copy_paste_config = augmentation_config.get("copy_paste", {})
+
+# Get individual pipeline configs.
+hands_inhouse_config = copy_paste_config.get("hands_inhouse", {})
+hands_public_config = copy_paste_config.get("hands_public", {})
+tags_config = copy_paste_config.get("tags", {})
+
+# visualization_path is not directly used in this file but can be used elsewhere if needed.
+# visualization_path = augmentation_config.get("visualization_path", None)
 
 class SelectiveCopyPaste(A.DualTransform):
     def __init__(
@@ -19,7 +42,7 @@ class SelectiveCopyPaste(A.DualTransform):
         always_apply=False,
         class_id=None,
         obj_size_scale=1,
-        max_occlude_ratio=0.5
+        max_occlude_ratio=0.5,
     ):
         """
         Args:
@@ -131,7 +154,7 @@ class SelectiveCopyPaste(A.DualTransform):
                     return False
         return True
 
-    def apply(self, image, bboxes, class_labels, resized_shape=None, ori_shape=None):
+    def apply(self, image, bboxes, class_labels, resized_shape=None, ori_shape=None, debug_crops=False):
         """
         Paste object crops onto the image while avoiding overlap with existing
         or previously pasted objects of class self.object_class.
@@ -178,7 +201,7 @@ class SelectiveCopyPaste(A.DualTransform):
                 obj_img = cv2.resize(obj_img, (new_obj_w, new_obj_h), interpolation=cv2.INTER_LINEAR)
 
             # Apply the augmentation pipeline to the cropped object.
-            obj_img = augment_crop(obj_img)
+            obj_img = augment_crop(obj_img, debug_crops=debug_crops)
 
             if obj_img is None: # NOTE if the augmented crop is None, skip this object. Can happen if no alpha channel is found in the object (after cropping or before.)
                 continue
@@ -335,7 +358,8 @@ class SelectiveCopyPaste(A.DualTransform):
             bboxes_coords,
             class_labels=bboxes_labels,
             resized_shape=kwargs.get("resized_shape"),
-            ori_shape=kwargs.get("ori_shape")
+            ori_shape=kwargs.get("ori_shape"),
+            debug_crops=DEBUG_CROPS_CONFIG,
         )
         if updated_bboxes.shape[0] > 0:
             merged = np.hstack((updated_bboxes, updated_class_labels.reshape(-1, 1)))
@@ -358,14 +382,15 @@ class SelectiveCopyPaste(A.DualTransform):
 copy_paste_hand_inhouse = A.Compose(
     [
         SelectiveCopyPaste(
-            folder="/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_inhouse",
-            max_paste_objects=2,
-            blend=True,
-            sigma=2, # The size of the gaussian kernel for blending. The larger the more smooth the blending, the more transparent the pasted object.
-            max_attempts=20,
-            p=0.3,
-            class_id = 3,
-            obj_size_scale=1.7
+            folder=hands_inhouse_config.get("folder"),
+            max_paste_objects=hands_inhouse_config.get("max_paste_objects", 2),
+            blend=hands_inhouse_config.get("blend", True),
+            sigma=hands_inhouse_config.get("sigma", 2),
+            max_attempts=hands_inhouse_config.get("max_attempts", 20),
+            p=hands_inhouse_config.get("p", 0.3),
+            class_id=hands_inhouse_config.get("class_id", 3),
+            obj_size_scale=hands_inhouse_config.get("obj_size_scale", 1.7),
+            max_occlude_ratio=hands_inhouse_config.get("max_occlude_ratio", 0.5)
         )
     ],
     bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
@@ -374,14 +399,15 @@ copy_paste_hand_inhouse = A.Compose(
 copy_paste_hand_public = A.Compose(
     [
         SelectiveCopyPaste(
-            folder="/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_public",
-            max_paste_objects=5,
-            blend=True,
-            sigma=2, # The size of the gaussian kernel for blending. The larger the more smooth the blending, the more transparent the pasted object.
-            max_attempts=20,
-            p=0.6,
-            class_id = 3,
-            obj_size_scale=1.7
+            folder=hands_public_config.get("folder"),
+            max_paste_objects=hands_public_config.get("max_paste_objects", 5),
+            blend=hands_public_config.get("blend", True),
+            sigma=hands_public_config.get("sigma", 2),
+            max_attempts=hands_public_config.get("max_attempts", 20),
+            p=hands_public_config.get("p", 0.6),
+            class_id=hands_public_config.get("class_id", 3),
+            obj_size_scale=hands_public_config.get("obj_size_scale", 1.7),
+            max_occlude_ratio=hands_public_config.get("max_occlude_ratio", 0.5)
         )
     ],
     bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
@@ -390,14 +416,15 @@ copy_paste_hand_public = A.Compose(
 copy_paste_tag = A.Compose(
     [
         SelectiveCopyPaste(
-            folder="/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/tags",
-            max_paste_objects=7,
-            blend=True,
-            sigma=2, # The size of the gaussian kernel for blending. The larger the more smooth the blending, the more transparent the pasted object.
-            max_attempts=20,
-            p=0.9,
-            class_id = 0,
-            obj_size_scale=1
+            folder=tags_config.get("folder"),
+            max_paste_objects=tags_config.get("max_paste_objects", 7),
+            blend=tags_config.get("blend", True),
+            sigma=tags_config.get("sigma", 2),
+            max_attempts=tags_config.get("max_attempts", 20),
+            p=tags_config.get("p", 0.9),
+            class_id=tags_config.get("class_id", 0),
+            obj_size_scale=tags_config.get("obj_size_scale", 1.0),
+            max_occlude_ratio=tags_config.get("max_occlude_ratio", 0.5)
         )
     ],
     bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
@@ -461,7 +488,7 @@ def apply_copy_paste_augmentations(image, processed_bboxes, class_labels, resize
             bboxes=result["bboxes"],
             class_labels=result["class_labels"],
             resized_shape=resized_shape,
-            ori_shape=ori_shape
+            ori_shape=ori_shape,
         )
 
     final_aug_image = result["image"]

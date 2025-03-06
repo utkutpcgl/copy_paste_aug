@@ -29,54 +29,42 @@ Update the import path in `simple_copy_paste.py`:
 from ultralytics.data.cpp_utils.simple_copy_paste import apply_copy_paste_augmentations
 ```
 
-### Copy-Paste Settings
-Configure your augmentation settings in `simple_copy_paste.py`:
+``  
+simple_cpp/cpp_utils/config.yaml
+``
 
-```python
-copy_paste_hand_inhouse = A.Compose(
-    [
-        SelectiveCopyPaste(
-            folder="/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_inhouse",
-            max_paste_objects=2,
-            blend=True,
-            sigma=2, # The size of the gaussian kernel for blending. The larger the more smooth the blending, the more transparent the pasted object.
-            max_attempts=20,
-            p=0.3,
-            class_id = 3
-        )
-    ],
-    bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
-)
+This YAML file contains multiple sections:
 
-copy_paste_hand_public = A.Compose(
-    [
-        SelectiveCopyPaste(
-            folder="/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_public",
-            max_paste_objects=5,
-            blend=True,
-            sigma=2, # The size of the gaussian kernel for blending. The larger the more smooth the blending, the more transparent the pasted object.
-            max_attempts=20,
-            p=0.6,
-            class_id = 3
-        )
-    ],
-    bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
-)
+- **augmentation**:  
+  Contains visualization settings and the parameters for different copy-paste augmentation pipelines (such as *hands_inhouse*, *hands_public*, and *tags*).
 
-copy_paste_tag = A.Compose(
-    [
-        SelectiveCopyPaste(
-            folder="/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/tags",
-            max_paste_objects=7,
-            blend=True,
-            sigma=2, # The size of the gaussian kernel for blending. The larger the more smooth the blending, the more transparent the pasted object.
-            max_attempts=20,
-            p=0.9,
-            class_id = 1
-        )
-    ],
-    bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
-)
+- **crop_augmentations**:  
+  Contains parameters for pixel-level transforms (brightness, contrast, blur, etc.), spatial transforms (flip, rotation, affine, perspective), as well as random resize and crop configurations.
+
+- **debug**:  
+  Contains settings used for debugging (e.g., the number of augmented samples, folder names, and dataset YAML file path).
+
+Ensure you set the correct directory paths and values in this file. All modules reference it via relative paths so that they behave consistently.
+
+---
+
+## Modules
+
+- **Augmentation Pipeline**  
+  The copy-paste augmentation pipelines are defined in ``simple_copy_paste.py`` and instantiated based on configuration parameters. These pipelines:
+  - Paste object crops ensuring minimal overlap with existing objects.
+  - Blend pasted objects using Gaussian smoothing if enabled.
+  - Scale and adjust objects based on the provided configuration.
+
+- **Crop Augmentations**  
+  In ``crop_augmentations.py``, custom transforms (like ``RotateWithExpansion``, ``RandomResize``, and ``RandomCropCustom``) are created using parameters from the configuration file.
+
+- **Debug Augmentations**  
+  Run the script ``debug_augment.py`` to visualize augmentations on test images. Debug images (with drawn bounding boxes) are saved to the folder specified in the configuration.
+
+---
+
+## Running the Augmentations
 
 ```
 
@@ -90,8 +78,9 @@ ultralytics/ultralytics/data/cpp_utils
 Then modify ultralytics/ultralytics/data/base.py function get_image_and_label as follows (OR just copy paste copy-paste-aug/simple_cpp/cpp_utils/base.py to ultralytics/ultralytics/data/base.py):
 
 1. Import the apply_copy_paste_augmentations and plot_yolo_predictions functions from the simple_copy_paste.py file.
+
 ```python
-from ultralytics.data.cpp_utils.simple_copy_paste import apply_copy_paste_augmentations, plot_yolo_predictions
+from ultralytics.data.cpp_utils.simple_copy_paste import apply_copy_paste_augmentations, plot_yolo_predictions, VISUALIZATION_PATH
 ```
 
 2. Modify the get_image_and_label function as follows:
@@ -121,26 +110,27 @@ from ultralytics.data.cpp_utils.simple_copy_paste import apply_copy_paste_augmen
                 label["instances"].bboxes,
                 label["cls"],
                 resized_shape=label["resized_shape"],
-                ori_shape=label["ori_shape"]
+                ori_shape=label["ori_shape"],
+
             )
             assert label["img"].ndim == prev_ndim, "Image ndim changed after copy paste augmentation."
             # NOTE calling update() automatically updates bbox_areas.
             label["instances"].update(bboxes=new_bboxes)
             
-            # TODO UTKU, ass visualization path to ultralytics/ultralytics/cfg/default.yaml if you want to visualize the data.
-            if DEFAULT_CFG.get("visualization_path"):
+            # NOTE UTKU, ADD visualization path to ultralytics/ultralytics/cfg/default.yaml if you want to visualize the data.
+            if VISUALIZATION_PATH:
                 plot_yolo_predictions(
                     label["img"],
                     label["instances"].bboxes,
                     label["cls"],
-                    save_path=DEFAULT_CFG.visualization_path + "/" + str(index) + ".png"
+                    save_path=VISUALIZATION_PATH + "/" + str(index) + ".png"
                 )
 
         return label
 ```
 
 ## Visualization
-To enable visualization, add the following to `ultralytics/cfg/default.yaml`:
+To enable visualization, uncomment and set the following line in the yaml file ``simple_cpp/cpp_utils/config.yaml``:
 ```yaml
-visualization_path: "/path/to/save/visualizations"
+visualization_path: "visualizations"  # Path to save augmented images. Uncomment this if you want to save augmented images.
 ```
