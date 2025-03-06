@@ -134,3 +134,4 @@ To enable visualization, uncomment and set the following line in the yaml file `
 ```yaml
 visualization_path: "visualizations"  # Path to save augmented images. Uncomment this if you want to save augmented images.
 ```
+*NOTE*: Only batch size number of images will be saved circularly.
