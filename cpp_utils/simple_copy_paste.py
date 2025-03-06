@@ -136,6 +136,9 @@ class SelectiveCopyPaste(A.DualTransform):
             # Apply the augmentation pipeline to the cropped object.
             obj_img = augment_crop(obj_img)
 
+            if obj_img is None:
+                continue
+
             # NOTE Resize objects that are too large to ensure they fit within the target image 
             # while maintaining aspect ratio. The pasted object will be at most half of the target's smallest dimension.
             obj_h, obj_w = obj_img.shape[:2]

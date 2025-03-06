@@ -142,7 +142,9 @@ def augment_crop(obj_img):
     Returns:
         np.ndarray: Augmented object image (4 channels: BGR + alpha).
     """
-    assert obj_img.shape[-1] == 4, "Object image must have 4 channels (BGR + alpha)."
+    if not obj_img.shape[-1] == 4:
+        print("Object image must have 4 channels (BGR + alpha). Returning None. Object shape: ", obj_img.shape)
+        return None # else return NONE, dont copy paste this object
     
     # Separate the BGR image and the alpha mask.
     bgr_img = obj_img[:, :, :3]
@@ -169,12 +171,14 @@ def augment_crop(obj_img):
     ys, xs = np.where(alpha_final > 0)
     
     # Assert we found at least one non-transparent pixel.
-    assert ys.size > 0 and xs.size > 0, "The augmented image does not contain any non-transparent pixels based on the alpha mask."
+    if not (ys.size > 0 and xs.size > 0):
+        print("The augmented image does not contain any non-transparent pixels based on the alpha mask. Returning None.")
+        return None # else return NONE, dont copy paste this object
     
     y_min, y_max = ys.min(), ys.max()
     x_min, x_max = xs.min(), xs.max()
     cropped_resized_spatial_pixel_image = cropped_resized_spatial_pixel_image[y_min:y_max+1, x_min:x_max+1]
 
-    # Save the augmented object to a folder for debugging.
-    cv2.imwrite(f"{DEBUG_FOLDER_CROPS}/augmented_object_{time.time()}.png", cropped_resized_spatial_pixel_image)
+    # NOTE Save the augmented object to a folder for debugging. Uncomment to save. But stores a lot of images.
+    # cv2.imwrite(f"{DEBUG_FOLDER_CROPS}/augmented_object_{time.time()}.png", cropped_resized_spatial_pixel_image)
     return cropped_resized_spatial_pixel_image 
