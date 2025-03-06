@@ -13,12 +13,15 @@ CFG_PATH = os.path.join(os.path.dirname(__file__), 'config.yaml')
 assert os.path.exists(CFG_PATH), f"Configuration file not found at {CFG_PATH}"
 with open(CFG_PATH, 'r') as f:
     global_config = yaml.safe_load(f)
-VISUALIZATION_PATH = global_config.get("visualization_path", None)
-if VISUALIZATION_PATH:
-    os.makedirs(VISUALIZATION_PATH, exist_ok=True)
+
 
 # Extract augmentation configuration.
 augmentation_config = global_config.get("augmentation", {})
+
+VISUALIZATION_PATH = augmentation_config.get("visualization_path", None)
+if VISUALIZATION_PATH:
+    os.makedirs(VISUALIZATION_PATH, exist_ok=True)
+
 DEBUG_CROPS_CONFIG = augmentation_config.get("debug_crops", False)
 copy_paste_config = augmentation_config.get("copy_paste", {})
 

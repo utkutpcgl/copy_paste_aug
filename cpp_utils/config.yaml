@@ -18,7 +18,7 @@ augmentation:
       p: 0.3
       class_id: 3
       obj_size_scale: 1.7
-      max_occlude_ratio: 0.5
+      max_occlude_ratio: 0.8
     hands_public:
       folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_public"
       max_paste_objects: 5
@@ -28,7 +28,7 @@ augmentation:
       p: 0.6
       class_id: 3
       obj_size_scale: 1.7
-      max_occlude_ratio: 0.5
+      max_occlude_ratio: 0.8
     tags:
       folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/tags"
       max_paste_objects: 7
@@ -38,7 +38,7 @@ augmentation:
       p: 0.9
       class_id: 0
       obj_size_scale: 1.0
-      max_occlude_ratio: 0.5
+      max_occlude_ratio: 0.8
 
 # Crop augmentation pipelines parameters.
 crop_augmentations:

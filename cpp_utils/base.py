@@ -17,8 +17,7 @@ from torch.utils.data import Dataset
 from ultralytics.data.utils import FORMATS_HELP_MSG, HELP_URL, IMG_FORMATS
 from ultralytics.utils import DEFAULT_CFG, LOCAL_RANK, LOGGER, NUM_THREADS, TQDM
 
-from ultralytics.data.cpp_utils.simple_copy_paste import apply_copy_paste_augmentations, plot_yolo_predictions
-
+from ultralytics.data.cpp_utils.simple_copy_paste import apply_copy_paste_augmentations, plot_yolo_predictions, VISUALIZATION_PATH
 
 class BaseDataset(Dataset):
     """
@@ -313,18 +312,21 @@ class BaseDataset(Dataset):
                 label["img"],
                 label["instances"].bboxes,
                 label["cls"],
+                resized_shape=label["resized_shape"],
+                ori_shape=label["ori_shape"],
+
             )
             assert label["img"].ndim == prev_ndim, "Image ndim changed after copy paste augmentation."
             # NOTE calling update() automatically updates bbox_areas.
             label["instances"].update(bboxes=new_bboxes)
             
-            # TODO UTKU, ass visualization path to ultralytics/ultralytics/cfg/default.yaml if you want to visualize the data.
-            if DEFAULT_CFG.get("visualization_path"):
+            # NOTE UTKU, ADD visualization path to ultralytics/ultralytics/cfg/default.yaml if you want to visualize the data.
+            if VISUALIZATION_PATH:
                 plot_yolo_predictions(
                     label["img"],
                     label["instances"].bboxes,
                     label["cls"],
-                    save_path=DEFAULT_CFG.visualization_path + "/" + str(index) + ".png"
+                    save_path=VISUALIZATION_PATH + "/" + str(index) + ".png"
                 )
 
         return label
