@@ -18,7 +18,8 @@ class SelectiveCopyPaste(A.DualTransform):
         p=1,
         always_apply=False,
         class_id=None,
-        obj_size_scale=1
+        obj_size_scale=1,
+        max_occlude_ratio=0.5
     ):
         """
         Args:
@@ -37,6 +38,7 @@ class SelectiveCopyPaste(A.DualTransform):
         self.sigma = sigma
         self.max_attempts = max_attempts
         self.obj_size_scale = obj_size_scale
+        self.max_occlude_ratio = max_occlude_ratio
         # Preload list of valid image files.
         self.object_files = [
             os.path.join(folder, f)
@@ -68,6 +70,44 @@ class SelectiveCopyPaste(A.DualTransform):
             return False
         return True
 
+    def get_occlude_ratio(self, candidate_bbox, bbox):
+        """
+        Compute the occlusion ratio of bbox (box2) by candidate_bbox.
+        The occlusion ratio is defined as the fraction of bbox's area that is covered by candidate_bbox.
+        
+        For example:
+            - If candidate_bbox covers 50% of bbox, this returns 0.5.
+            - If candidate_bbox covers 25% of bbox, this returns 0.25.
+        
+        Args:
+            candidate_bbox (np.ndarray): The candidate bounding box in [x1, y1, x2, y2] format.
+            bbox (np.ndarray): The reference bounding box (box2) in [x1, y1, x2, y2] format.
+            
+        Returns:
+            float: The occlusion ratio.
+        """
+        candidate_bbox = np.array(candidate_bbox, dtype=np.float32)
+        bbox = np.array(bbox, dtype=np.float32)
+        
+        # Compute intersection coordinates.
+        inter_x1 = max(candidate_bbox[0], bbox[0])
+        inter_y1 = max(candidate_bbox[1], bbox[1])
+        inter_x2 = min(candidate_bbox[2], bbox[2])
+        inter_y2 = min(candidate_bbox[3], bbox[3])
+        
+        # Compute intersection area.
+        inter_width = max(0, inter_x2 - inter_x1)
+        inter_height = max(0, inter_y2 - inter_y1)
+        inter_area = inter_width * inter_height
+        
+        # Compute area of bbox.
+        bbox_area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+        if bbox_area <= 0:
+            return 0.0
+        
+        occlude_ratio = inter_area / bbox_area
+        return occlude_ratio
+
     def is_valid_position(self, candidate_bbox, bboxes, class_labels):
         """
         Check if candidate_bbox (in [x1, y1, x2, y2] format) overlaps any bbox
@@ -84,6 +124,10 @@ class SelectiveCopyPaste(A.DualTransform):
         for bbox, label in zip(bboxes, class_labels):
             if label == self.object_class:
                 if self.check_overlap(candidate_bbox, bbox):
+                    return False
+            else:
+                # Check if the iou of the pasted object with other class bboxes is too high.
+                if self.get_occlude_ratio(candidate_bbox, bbox) > self.max_occlude_ratio:
                     return False
         return True
 
@@ -136,7 +180,7 @@ class SelectiveCopyPaste(A.DualTransform):
             # Apply the augmentation pipeline to the cropped object.
             obj_img = augment_crop(obj_img)
 
-            if obj_img is None:
+            if obj_img is None: # NOTE if the augmented crop is None, skip this object. Can happen if no alpha channel is found in the object (after cropping or before.)
                 continue
 
             # NOTE Resize objects that are too large to ensure they fit within the target image 
@@ -352,7 +396,7 @@ copy_paste_tag = A.Compose(
             sigma=2, # The size of the gaussian kernel for blending. The larger the more smooth the blending, the more transparent the pasted object.
             max_attempts=20,
             p=0.9,
-            class_id = 1,
+            class_id = 0,
             obj_size_scale=1
         )
     ],
@@ -363,19 +407,20 @@ copy_paste_tag = A.Compose(
 
 def apply_copy_paste_augmentations(image, processed_bboxes, class_labels, resized_shape=None, ori_shape=None):
     """
-    Applies hand and tag copy-paste augmentations to the given image.
+    Applies hand and tag copy-paste augmentations to the given image in a randomly determined order.
     
     The function converts the provided bounding boxes to a NumPy array (if not already),
     adds a dummy box and dummy class label as required by the augmentation pipelines,
-    applies the hand and tag transformations sequentially, and finally removes the dummy box.
+    randomly shuffles the order of the augmentation pipelines, applies them sequentially,
+    and finally removes the dummy box.
     
     Parameters:
         image (np.ndarray): The image to augment.
         processed_bboxes (list or np.ndarray): List of bounding boxes in YOLO format 
             (each as [x_center, y_center, width, height]).
         class_labels (list): List of class labels corresponding to each bounding box.
-        copy_paste_hand (albumentations.Compose): The copy-paste augmentation for hands.
-        copy_paste_tag (albumentations.Compose): The copy-paste augmentation for tags.
+        resized_shape (tuple, optional): The shape (height, width) of the resized template image.
+        ori_shape (tuple, optional): The original shape (height, width) of the template image.
         
     Returns:
         final_aug_image (np.ndarray): The augmented image.
@@ -385,57 +430,46 @@ def apply_copy_paste_augmentations(image, processed_bboxes, class_labels, resize
     Raises:
         AssertionError: If the dummy box persists in the final augmented bounding boxes.
     """
-
-    # Convert to numpy array for Albumentations compatibility
+    # Convert to numpy array for Albumentations compatibility.
     assert processed_bboxes.dtype == np.float32, "processed_bboxes must be a numpy array."
     assert class_labels.dtype == np.float32, "processed_bboxes must be a numpy array."
 
     # Add dummy box at center of image with small dimensions NOTE this is crucial.
     dummy_box = np.array([[0.5, 0.5, 0.0001, 0.0001]], dtype=np.float32)  # x_center, y_center, width, height
     processed_bboxes = np.vstack([dummy_box, processed_bboxes]) if len(processed_bboxes) > 0 else dummy_box
-    class_labels = np.insert(class_labels, 0, 0)  # Add dummy class label at the beginning. Use np.insert.
+    dummy_class_label = -1
+    class_labels = np.insert(class_labels, 0, dummy_class_label)  # Add dummy class label at the beginning.
 
-    
-    # 1 Apply hand augmentation inhouse.
-    hand_augmented_inhouse = copy_paste_hand_inhouse(
-        image=image, 
-        bboxes=processed_bboxes, 
-        class_labels=class_labels,
-        resized_shape=resized_shape,
-        ori_shape=ori_shape
-    )
-    hand_aug_image_inhouse = hand_augmented_inhouse["image"]
-    hand_aug_bboxes_inhouse = hand_augmented_inhouse["bboxes"]
-    hand_aug_class_labels_inhouse = hand_augmented_inhouse.get("class_labels", None)
+    # Define augmentation pipelines.
+    aug_pipelines = [
+        copy_paste_hand_inhouse,
+        copy_paste_hand_public,
+        copy_paste_tag
+    ]
+    # Randomly shuffle the order of augmentations.
+    random.shuffle(aug_pipelines)
 
-    # 2 Apply hand augmentation public.
-    hand_augmented_public = copy_paste_hand_public(
-        image=hand_aug_image_inhouse, 
-        bboxes=hand_aug_bboxes_inhouse, 
-        class_labels=hand_aug_class_labels_inhouse,
-        resized_shape=resized_shape,
-        ori_shape=ori_shape
-    )
+    result = {
+        "image": image,
+        "bboxes": processed_bboxes,
+        "class_labels": class_labels
+    }
+    # Apply each augmentation sequentially in randomized order.
+    for aug_fn in aug_pipelines:
+        result = aug_fn(
+            image=result["image"],
+            bboxes=result["bboxes"],
+            class_labels=result["class_labels"],
+            resized_shape=resized_shape,
+            ori_shape=ori_shape
+        )
 
-    hand_aug_image_public = hand_augmented_public["image"]
-    hand_aug_bboxes_public = hand_augmented_public["bboxes"]
-    hand_aug_class_labels_public = hand_augmented_public.get("class_labels", None)
+    final_aug_image = result["image"]
+    final_aug_bboxes = result["bboxes"]
+    final_aug_class_labels = result.get("class_labels", None)
     
-    # 3 Apply tag augmentation on the result from hand augmentation.
-    tag_augmented = copy_paste_tag(
-        image=hand_aug_image_public, 
-        bboxes=hand_aug_bboxes_public, 
-        class_labels=hand_aug_class_labels_public,
-        resized_shape=resized_shape,
-        ori_shape=ori_shape
-    )
-    
-    final_aug_image = tag_augmented["image"]
-    final_aug_bboxes = tag_augmented["bboxes"]
     # Remove the dummy box which is always positioned first.
     final_aug_bboxes = final_aug_bboxes[1:]
-    
-    final_aug_class_labels = tag_augmented.get("class_labels", None)
     final_aug_class_labels = final_aug_class_labels[1:]
     
     # Assert that the dummy box is no longer present.

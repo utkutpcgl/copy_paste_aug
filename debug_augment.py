@@ -15,7 +15,7 @@ os.makedirs(DEBUG_FOLDER, exist_ok=True)
 YAML_FILE = "/home/utkutopcuoglu/Projects/Datasets/person_datasets/person_data.yaml"
 
 # Number of augmentations per image.
-NUM_AUGMENTATIONS = 5
+NUM_AUGMENTATIONS = 100
 
 # Load image data from the YAML file.
 with open(YAML_FILE, "r") as f:
