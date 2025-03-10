@@ -386,14 +386,14 @@ copy_paste_hand_inhouse = A.Compose(
     [
         SelectiveCopyPaste(
             folder=hands_inhouse_config.get("folder"),
-            max_paste_objects=hands_inhouse_config.get("max_paste_objects", 2),
+            max_paste_objects=hands_inhouse_config.get("max_paste_objects", 1),
             blend=hands_inhouse_config.get("blend", True),
             sigma=hands_inhouse_config.get("sigma", 2),
             max_attempts=hands_inhouse_config.get("max_attempts", 20),
-            p=hands_inhouse_config.get("p", 0.3),
+            p=hands_inhouse_config.get("p", 0.1),
             class_id=hands_inhouse_config.get("class_id", 3),
-            obj_size_scale=hands_inhouse_config.get("obj_size_scale", 1.7),
-            max_occlude_ratio=hands_inhouse_config.get("max_occlude_ratio", 0.5)
+            obj_size_scale=hands_inhouse_config.get("obj_size_scale", 1.5),
+            max_occlude_ratio=hands_inhouse_config.get("max_occlude_ratio", 0.1)
         )
     ],
     bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
@@ -403,14 +403,14 @@ copy_paste_hand_public = A.Compose(
     [
         SelectiveCopyPaste(
             folder=hands_public_config.get("folder"),
-            max_paste_objects=hands_public_config.get("max_paste_objects", 5),
+            max_paste_objects=hands_public_config.get("max_paste_objects", 2),
             blend=hands_public_config.get("blend", True),
             sigma=hands_public_config.get("sigma", 2),
             max_attempts=hands_public_config.get("max_attempts", 20),
-            p=hands_public_config.get("p", 0.6),
+            p=hands_public_config.get("p", 0.2),
             class_id=hands_public_config.get("class_id", 3),
-            obj_size_scale=hands_public_config.get("obj_size_scale", 1.7),
-            max_occlude_ratio=hands_public_config.get("max_occlude_ratio", 0.5)
+            obj_size_scale=hands_public_config.get("obj_size_scale", 1.5),
+            max_occlude_ratio=hands_public_config.get("max_occlude_ratio", 0.1)
         )
     ],
     bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
@@ -420,14 +420,14 @@ copy_paste_tag = A.Compose(
     [
         SelectiveCopyPaste(
             folder=tags_config.get("folder"),
-            max_paste_objects=tags_config.get("max_paste_objects", 7),
+            max_paste_objects=tags_config.get("max_paste_objects", 2),
             blend=tags_config.get("blend", True),
             sigma=tags_config.get("sigma", 2),
             max_attempts=tags_config.get("max_attempts", 20),
-            p=tags_config.get("p", 0.9),
+            p=tags_config.get("p", 0.3),
             class_id=tags_config.get("class_id", 0),
             obj_size_scale=tags_config.get("obj_size_scale", 1.0),
-            max_occlude_ratio=tags_config.get("max_occlude_ratio", 0.5)
+            max_occlude_ratio=tags_config.get("max_occlude_ratio", 0.2)
         )
     ],
     bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])

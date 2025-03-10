@@ -166,6 +166,7 @@ pixel_transforms = A.Compose([
 # Get spatial-level transforms config.
 spatial_config = crop_config.get("spatial_transforms", {})
 hf_config = spatial_config.get("horizontal_flip", {})
+vf_config = spatial_config.get("vertical_flip", {})
 rwe_config = spatial_config.get("rotate_with_expansion", {})
 affine_config = spatial_config.get("affine", {})
 persp_config = spatial_config.get("perspective", {})
@@ -200,6 +201,7 @@ random_crop_config = crop_config.get("random_crop", {})
 # -----------------------------------------------------------------------------
 spatial_transforms = A.Compose([
     A.HorizontalFlip(p=hf_config.get("p", 0.5)),
+    A.VerticalFlip(p=vf_config.get("p", 0.5)),
     # Affine and Perspective are defined using parameters from the configuration.
     # Note: The custom RotateWithExpansion transform is used instead of Albumentations built-in rotation.
     # See the custom class below.
