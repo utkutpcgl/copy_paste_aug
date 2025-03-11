@@ -13,32 +13,32 @@ augmentation:
       folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_inhouse"
       max_paste_objects: 1
       blend: true
-      sigma: 2
+      sigma: 1
       max_attempts: 20
-      p: 0.1
+      p: 0.05
       class_id: 3
-      obj_size_scale: 1.7
+      obj_size_scale: 1.5
       max_occlude_ratio: 0.1
     hands_public:
       folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_public"
       max_paste_objects: 2
       blend: true
-      sigma: 2
+      sigma: 1
       max_attempts: 20
-      p: 0.25
+      p: 0.2
       class_id: 3
-      obj_size_scale: 1.7
+      obj_size_scale: 1.5
       max_occlude_ratio: 0.1
     tags:
       folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/tags"
       max_paste_objects: 3
       blend: true
-      sigma: 2
+      sigma: 1
       max_attempts: 20
       p: 0.4
       class_id: 0
       obj_size_scale: 1.0
-      max_occlude_ratio: 0.2
+      max_occlude_ratio: 0.25
 
 # Crop augmentation pipelines parameters.
 crop_augmentations:
