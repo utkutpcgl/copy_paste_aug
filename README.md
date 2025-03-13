@@ -26,7 +26,7 @@ pip3 install scikit-image
 ### Import Path Modification
 Update the import path in `simple_copy_paste.py`:
 ```python
-from ultralytics.data.cpp_utils.simple_copy_paste import apply_copy_paste_augmentations
+from ultralytics.data.cpp_utils.crop_augmentations import augment_crop
 ```
 
 ``  
@@ -75,58 +75,86 @@ Ensure you set the correct directory paths and values in this file. All modules 
 ultralytics/ultralytics/data/cpp_utils
 ```
 
-Then modify ultralytics/ultralytics/data/base.py function get_image_and_label as follows (OR just copy paste copy-paste-aug/simple_cpp/cpp_utils/base.py to ultralytics/ultralytics/data/base.py):
+2. Then modify configs as you wish.
 
-1. Import the apply_copy_paste_augmentations and plot_yolo_predictions functions from the simple_copy_paste.py file.
-
+3. Update the import path in `simple_copy_paste.py`:
 ```python
-from ultralytics.data.cpp_utils.simple_copy_paste import apply_copy_paste_augmentations, plot_yolo_predictions, VISUALIZATION_PATH
+from ultralytics.data.cpp_utils.crop_augmentations import augment_crop
 ```
 
-2. Modify the get_image_and_label function as follows:
+4. Modify the ultralytics/ultralytics/data/augment.py/v8_transforms function as follows:
+
 ```python
-    def get_image_and_label(self, index):
-        """Get and return label information from the dataset."""
-        label = deepcopy(self.labels[index])  # requires deepcopy() https://github.com/ultralytics/ultralytics/pull/1948
-        label.pop("shape", None)  # shape is for rect, remove it
-        label["img"], label["ori_shape"], label["resized_shape"] = self.load_image(index)
-        label["ratio_pad"] = (
-            label["resized_shape"][0] / label["ori_shape"][0],
-            label["resized_shape"][1] / label["ori_shape"][1],
-        )  # for evaluation
-        if self.rect:
-            label["rect_shape"] = self.batch_shapes[self.batch[index]]
-        label = self.update_labels_info(label)
-        # NOTE UTKU: here we should return the new label with the COPY PASTE applied.
-        if self.augment:
-            # NOTE UTKU this is the overall idea:
-            # label["cls"] gives the class id. (float32 numpy array)
-            # label["instances"]["bboxes"] gives the bounding boxes. (float32 numpy array)
-            # label["instances"]["bbox_areas"] gives the bounding bbox areas. (float32 numpy array)
-            # label["img"] gives the image. (uint8 numpy array)
-            prev_ndim = label["img"].ndim
-            label["img"], new_bboxes , label["cls"] = apply_copy_paste_augmentations(
-                label["img"],
-                label["instances"].bboxes,
-                label["cls"],
-                resized_shape=label["resized_shape"],
-                ori_shape=label["ori_shape"],
 
+    def v8_transforms(dataset, imgsz, hyp, stretch=False):
+    """
+    Applies a series of image transformations for training.
+
+    This function creates a composition of image augmentation techniques to prepare images for YOLO training.
+    It includes operations such as mosaic, copy-paste, random perspective, mixup, and various color adjustments.
+
+    Args:
+        dataset (Dataset): The dataset object containing image data and annotations.
+        imgsz (int): The target image size for resizing.
+        hyp (Namespace): A dictionary of hyperparameters controlling various aspects of the transformations.
+        stretch (bool): If True, applies stretching to the image. If False, uses LetterBox resizing.
+
+    Returns:
+        (Compose): A composition of image transformations to be applied to the dataset.
+
+    Examples:
+        >>> from ultralytics.data.dataset import YOLODataset
+        >>> from ultralytics.utils import IterableSimpleNamespace
+        >>> dataset = YOLODataset(img_path="path/to/images", imgsz=640)
+        >>> hyp = IterableSimpleNamespace(mosaic=1.0, copy_paste=0.5, degrees=10.0, translate=0.2, scale=0.9)
+        >>> transforms = v8_transforms(dataset, imgsz=640, hyp=hyp)
+        >>> augmented_data = transforms(dataset[0])
+    """
+    mosaic = Mosaic(dataset, imgsz=imgsz, p=hyp.mosaic)
+    affine = RandomPerspective(
+        degrees=hyp.degrees,
+        translate=hyp.translate,
+        scale=hyp.scale,
+        shear=hyp.shear,
+        perspective=hyp.perspective,
+        pre_transform=None if stretch else LetterBox(new_shape=(imgsz, imgsz)),
+    )
+
+    pre_transform = Compose([mosaic, affine])
+    if hyp.copy_paste_mode == "flip":
+        pre_transform.insert(1, CopyPaste(p=hyp.copy_paste, mode=hyp.copy_paste_mode))
+    else:
+        pre_transform.append(
+            CopyPaste(
+                dataset,
+                pre_transform=Compose([Mosaic(dataset, imgsz=imgsz, p=hyp.mosaic), affine]),
+                p=hyp.copy_paste,
+                mode=hyp.copy_paste_mode,
             )
-            assert label["img"].ndim == prev_ndim, "Image ndim changed after copy paste augmentation."
-            # NOTE calling update() automatically updates bbox_areas.
-            label["instances"].update(bboxes=new_bboxes)
-            
-            # NOTE UTKU, ADD visualization path to ultralytics/ultralytics/cfg/default.yaml if you want to visualize the data.
-            if VISUALIZATION_PATH:
-                plot_yolo_predictions(
-                    label["img"],
-                    label["instances"].bboxes,
-                    label["cls"],
-                    save_path=VISUALIZATION_PATH + "/" + str(index) + ".png"
-                )
+        )
+    flip_idx = dataset.data.get("flip_idx", [])  # for keypoints augmentation
+    if dataset.use_keypoints:
+        kpt_shape = dataset.data.get("kpt_shape", None)
+        if len(flip_idx) == 0 and hyp.fliplr > 0.0:
+            hyp.fliplr = 0.0
+            LOGGER.warning("WARNING ⚠️ No 'flip_idx' array defined in data.yaml, setting augmentation 'fliplr=0.0'")
+        elif flip_idx and (len(flip_idx) != kpt_shape[0]):
+            raise ValueError(f"data.yaml flip_idx={flip_idx} length must be equal to kpt_shape[0]={kpt_shape[0]}")
 
-        return label
+    # Build the complete pipeline and add the copy paste wrapper at the end.
+    from ultralytics.data.cpp_utils.simple_copy_paste import CopyPasteUtku   
+    return Compose(
+        [
+            pre_transform,
+            MixUp(dataset, pre_transform=pre_transform, p=hyp.mixup),
+            Albumentations(p=1.0),
+            RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
+            RandomFlip(direction="vertical", p=hyp.flipud),
+            RandomFlip(direction="horizontal", p=hyp.fliplr, flip_idx=flip_idx),
+            # Apply copy paste AFTER all other transforms
+            CopyPasteUtku() # NOTE Added by UTKU
+        ]
+    )  # transforms
 ```
 
 ## Visualization

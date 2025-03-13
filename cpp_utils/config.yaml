@@ -44,18 +44,18 @@ augmentation:
 crop_augmentations:
   pixel_transforms:
     random_brightness_contrast:
-      brightness_limit: 0.2
-      contrast_limit: 0.2
+      brightness_limit: [0, 0.2]
+      contrast_limit: [0, 0.2]
       p: 0.1
     hue_saturation_value:
-      hue_shift_limit: 20
-      sat_shift_limit: 30
-      val_shift_limit: 20
+      hue_shift_limit: [0, 20]
+      sat_shift_limit: [0, 30]
+      val_shift_limit: [0, 20]
       p: 0.1
     rgb_shift:
-      r_shift_limit: 10
-      g_shift_limit: 10
-      b_shift_limit: 10
+      r_shift_limit: [0, 10]
+      g_shift_limit: [0, 10]
+      b_shift_limit: [0, 10]
       p: 0.1
     gaussian_blur:
       p: 0.1
@@ -102,5 +102,5 @@ crop_augmentations:
 # Debugging specific configuration. Only for debug_augment.py.
 debug:
   dataset_yaml: "/home/utkutopcuoglu/Projects/Datasets/person_datasets/person_data.yaml" # Path to the dataset YAML file for visualization.
-  num_augmentations: 100                             # Number of augmented samples to generate per image.
+  num_augmentations: 5000                             # Number of augmented samples to generate per image.
   debug_folder: "debug"                              # Debug folder where augmented images will be saved.
