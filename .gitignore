@@ -4,6 +4,7 @@ cmake-build-debug/
 cmake-build-release/
 bin/
 out/
+__pycache__/
 
 # Object files, executables, libraries
 *.o
@@ -13,6 +14,7 @@ out/
 *.dylib
 *.exe
 *.out
+**/*.pdf
 **/*.png
 **/*.jpg
 **/*.jpeg
