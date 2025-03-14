@@ -163,3 +163,15 @@ To enable visualization, uncomment and set the following line in the yaml file `
 visualization_path: "visualizations"  # Path to save augmented images. Uncomment this if you want to save augmented images.
 ```
 *NOTE*: Only batch size number of images will be saved circularly.
+
+
+### Visualizing training samples right before the model sees them
+Modify the trainer.py code as follows, in the BaseTrainer class, _do_train method:
+```python
+            for i, batch in pbar:
+                self.run_callbacks("on_train_batch_start")
+                # Warmup
+                ni = i + nb * epoch
+                # TODO visualize the batch here with the yolo annotation bounding boxes (with classes) to validate copy paste augmentation is working as desired.
+                self.plot_training_samples(batch, ni)
+```

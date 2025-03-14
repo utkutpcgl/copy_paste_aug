@@ -17,11 +17,9 @@ with open(CFG_PATH, 'r') as f:
 
 # Extract augmentation configuration.
 augmentation_config = global_config.get("augmentation", {})
-
 VISUALIZATION_PATH = augmentation_config.get("visualization_path", None)
 if VISUALIZATION_PATH:
     os.makedirs(VISUALIZATION_PATH, exist_ok=True)
-
 DEBUG_CROPS_CONFIG = augmentation_config.get("debug_crops", False)
 copy_paste_config = augmentation_config.get("copy_paste", {})
 
@@ -195,12 +193,13 @@ class SelectiveCopyPaste(A.DualTransform):
                     "resized_shape must be a tuple of (height, width)"
                 assert isinstance(ori_shape, (tuple, list)) and len(ori_shape) == 2, \
                     "ori_shape must be a tuple of (height, width)"
-                ori_h, ori_w = ori_shape
-                resized_h, resized_w = resized_shape
-                scale_w = resized_w / ori_w
-                scale_h = resized_h / ori_h
-                new_obj_w = int(obj_img.shape[1] * scale_w * self.obj_size_scale)
-                new_obj_h = int(obj_img.shape[0] * scale_h * self.obj_size_scale)
+                # ori_h, ori_w = ori_shape
+                # resized_h, resized_w = resized_shape
+                ori_max = max(ori_shape)
+                resized_max = max(resized_shape)
+                scale = resized_max / ori_max
+                new_obj_w = int(obj_img.shape[1] * scale * self.obj_size_scale)
+                new_obj_h = int(obj_img.shape[0] * scale * self.obj_size_scale)
                 obj_img = cv2.resize(obj_img, (new_obj_w, new_obj_h), interpolation=cv2.INTER_LINEAR)
 
             # Apply the augmentation pipeline to the cropped object.
@@ -330,17 +329,17 @@ class SelectiveCopyPaste(A.DualTransform):
         is_dummy = bboxes.shape[0] > 0 and np.allclose(bboxes[0][0:4], np.array([[0.5, 0.5, 0.001, 0.001]]), atol=1e-2)
         assert not is_dummy, f"Dummy box found in final_aug_bboxes: {bboxes[0]}"
         
+        # Allow a small tolerance for floating point errors.
+        tol = 1e-6
         # Dont process if the probability is less than p.
         if max(random.random(), 0.0) > self.p:
-            return {"image": image, "bboxes": bboxes, "class_labels": class_labels_input}
+            return {"image": image, "bboxes": np.concatenate((np.clip(bboxes[:, :4], 0+tol, 1-tol), bboxes[:, 4:5]), axis=1), "class_labels": class_labels_input}
         
         convert_back_to_bgr = False
         if image.shape[-1] == 3:
             convert_back_to_bgr = True
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
-        # Allow a small tolerance for floating point errors.
-        tol = 1e-6
         if bboxes.shape[0] > 0:
             # Instead of using a strict assertion, check with a tolerance then clip.
             assert np.all((bboxes[:, :4] >= -tol) & (bboxes[:, :4] <= 1 + tol)), \
@@ -386,14 +385,14 @@ copy_paste_hand_inhouse = A.Compose(
     [
         SelectiveCopyPaste(
             folder=hands_inhouse_config.get("folder"),
-            max_paste_objects=hands_inhouse_config.get("max_paste_objects", 1),
+            max_paste_objects=hands_inhouse_config.get("max_paste_objects", 2),
             blend=hands_inhouse_config.get("blend", True),
             sigma=hands_inhouse_config.get("sigma", 2),
             max_attempts=hands_inhouse_config.get("max_attempts", 20),
-            p=hands_inhouse_config.get("p", 0.1),
+            p=hands_inhouse_config.get("p", 0.3),
             class_id=hands_inhouse_config.get("class_id", 3),
-            obj_size_scale=hands_inhouse_config.get("obj_size_scale", 1.5),
-            max_occlude_ratio=hands_inhouse_config.get("max_occlude_ratio", 0.1)
+            obj_size_scale=hands_inhouse_config.get("obj_size_scale", 1.7),
+            max_occlude_ratio=hands_inhouse_config.get("max_occlude_ratio", 0.5)
         )
     ],
     bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
@@ -403,14 +402,14 @@ copy_paste_hand_public = A.Compose(
     [
         SelectiveCopyPaste(
             folder=hands_public_config.get("folder"),
-            max_paste_objects=hands_public_config.get("max_paste_objects", 2),
+            max_paste_objects=hands_public_config.get("max_paste_objects", 5),
             blend=hands_public_config.get("blend", True),
             sigma=hands_public_config.get("sigma", 2),
             max_attempts=hands_public_config.get("max_attempts", 20),
-            p=hands_public_config.get("p", 0.2),
+            p=hands_public_config.get("p", 0.6),
             class_id=hands_public_config.get("class_id", 3),
-            obj_size_scale=hands_public_config.get("obj_size_scale", 1.5),
-            max_occlude_ratio=hands_public_config.get("max_occlude_ratio", 0.1)
+            obj_size_scale=hands_public_config.get("obj_size_scale", 1.7),
+            max_occlude_ratio=hands_public_config.get("max_occlude_ratio", 0.5)
         )
     ],
     bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
@@ -420,14 +419,14 @@ copy_paste_tag = A.Compose(
     [
         SelectiveCopyPaste(
             folder=tags_config.get("folder"),
-            max_paste_objects=tags_config.get("max_paste_objects", 2),
+            max_paste_objects=tags_config.get("max_paste_objects", 7),
             blend=tags_config.get("blend", True),
             sigma=tags_config.get("sigma", 2),
             max_attempts=tags_config.get("max_attempts", 20),
-            p=tags_config.get("p", 0.3),
+            p=tags_config.get("p", 0.9),
             class_id=tags_config.get("class_id", 0),
             obj_size_scale=tags_config.get("obj_size_scale", 1.0),
-            max_occlude_ratio=tags_config.get("max_occlude_ratio", 0.2)
+            max_occlude_ratio=tags_config.get("max_occlude_ratio", 0.5)
         )
     ],
     bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
@@ -570,3 +569,107 @@ def plot_yolo_predictions(image, bboxes, class_ids, save_path=None, colors=None,
         cv2.imwrite(save_path, output_image)
     
     return output_image
+
+def clip_bboxes_safely(bboxes_normalized, tol=1e-6):
+    """
+    Inputs normalized bboxes in [0,1] YOLO format.
+    Clip bounding boxes so that they are strictly within [0,1] in x1, y1, x2, y2 coordinate system with a safety margin `tol`.
+    Returns the clipped bboxes in normalized [0,1] YOLO format.
+    """
+    # Convert YOLO format (x_center, y_center, w, h) to corner format (x1, y1, x2, y2)
+    x_center = bboxes_normalized[:, 0]
+    y_center = bboxes_normalized[:, 1]
+    w_box = bboxes_normalized[:, 2]
+    h_box = bboxes_normalized[:, 3]
+    x1 = x_center - w_box / 2.0
+    y1 = y_center - h_box / 2.0
+    x2 = x_center + w_box / 2.0
+    y2 = y_center + h_box / 2.0
+    # Clip boxes so that they are strictly within [0,1] with a safety margin `tol`, update bboxes_normalized if you have to change x1, y1, x2, y2.
+    assert np.all(x1 >= -tol) and np.all(y1 >= -tol) and np.all(x2 <= 1.0 + tol) and np.all(y2 <= 1.0 + tol), \
+        f"Bounding boxes (in corner format) must be strictly within [0,1]: got x1: {x1}, y1: {y1}, x2: {x2}, y2: {y2}"
+
+    x1 = np.clip(x1, 0 + tol, 1.0 - tol)
+    y1 = np.clip(y1, 0 + tol, 1.0 - tol)
+    x2 = np.clip(x2, 0 + tol, 1.0 - tol)
+    y2 = np.clip(y2, 0 + tol, 1.0 - tol)
+    
+    # Update bboxes_normalized with the clipped values
+    bboxes_normalized[:, 0] = (x1 + x2) / 2.0  # x_center
+    bboxes_normalized[:, 1] = (y1 + y2) / 2.0  # y_center
+    bboxes_normalized[:, 2] = x2 - x1          # width
+    bboxes_normalized[:, 3] = y2 - y1          # height
+    return bboxes_normalized
+
+
+class CopyPasteUtku:
+    def __init__(self):
+        pass
+
+    def __call__(self, labels):
+        """
+        Expecting data to be a dictionary with keys:
+            "img": np.ndarray,
+            "data["instances"].bboxes": np.ndarray (in YOLO format),
+            "class_labels": np.ndarray
+
+            # NOTE UTKU this is the overall idea:
+            # label["cls"] gives the class id. (float32 numpy array)
+            # label["instances"]["bboxes"] gives the bounding boxes. (float32 numpy array)
+            # label["instances"]["bbox_areas"] gives the bounding bbox areas. (float32 numpy array)
+            # label["img"] gives the image. (uint8 numpy array)
+
+            NOTE orishape and resized_shape are coming from the first image (out of 4) when mosaic is applied.
+        """
+        image = labels["img"]
+        bboxes = labels["instances"].bboxes
+        class_labels = labels["cls"]
+        resized_shape = labels["resized_shape"]
+        ori_shape = labels["ori_shape"]
+
+        # Ensure that bboxes and class_labels are in the expected dtype.
+        assert isinstance(bboxes, np.ndarray) and bboxes.dtype == np.float32, "Bboxes must be a np.ndarray with dtype float32"
+        assert isinstance(class_labels, np.ndarray) and class_labels.dtype == np.float32, "Class labels must be a np.ndarray with dtype float32"
+        
+
+        # Normalize bboxes coordinates from pixel values (x_center, y_center, width, height)
+        # to normalized [0,1] YOLO format using the image dimensions.
+        h_img, w_img = image.shape[:2]
+        bboxes_normalized = bboxes.copy()
+        if bboxes.shape[0] > 0:
+            bboxes_normalized[:, [0, 2]] /= w_img
+            bboxes_normalized[:, [1, 3]] /= h_img
+            # Clip boxes within [0, 1] range to account for small floating point errors.
+            # assert the error margin is small.
+            assert np.all((bboxes_normalized[:, :4] >= 0) & (bboxes_normalized[:, :4] <= 1)), \
+                f"All bbox coordinates must be in range [0,1]"
+            bboxes_normalized = clip_bboxes_safely(bboxes_normalized)
+
+        image, new_bboxes, class_labels = apply_copy_paste_augmentations(
+            image,
+            bboxes_normalized,
+            class_labels,
+            resized_shape=resized_shape,
+            ori_shape=ori_shape,
+        )
+
+        new_bboxes_denorm = new_bboxes.copy()
+        # Denormalize new_bboxes coordinates from normalized [0,1] YOLO format back to pixel coordinates.
+        if new_bboxes.shape[0] > 0:
+            new_bboxes_denorm[:, [0, 2]] *= w_img
+            new_bboxes_denorm[:, [1, 3]] *= h_img
+
+        labels["img"] = image
+        labels["cls"] = class_labels
+        labels["instances"].update(bboxes=new_bboxes_denorm)  # update() will automatically update bbox_areas.
+
+        # NOTE UTKU: if you want to visualize the result, set VISUALIZATION_PATH in the configuration.
+        if VISUALIZATION_PATH:
+            import time
+            plot_yolo_predictions(
+                labels["img"],
+                labels["instances"].bboxes,
+                labels["cls"],
+                save_path=VISUALIZATION_PATH + "/" + str(time.time()) + ".png"
+            )
+        return labels
