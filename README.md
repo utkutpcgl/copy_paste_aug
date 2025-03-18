@@ -77,7 +77,7 @@ ultralytics/ultralytics/data/cpp_utils
 
 2. Then modify configs as you wish.
 
-3. Update the import path in `simple_copy_paste.py`:
+3. Update the import path in `simple_copy_paste.py` if not correct:
 ```python
 from ultralytics.data.cpp_utils.crop_augmentations import augment_crop
 ```

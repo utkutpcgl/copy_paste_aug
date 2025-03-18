@@ -2,6 +2,13 @@
 
 # Global configuration for Copy-Paste Augmentation for YOLOv8
 
+# hands_inhouse:
+#   folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_inhouse"
+# hands_public:
+#   folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_public"
+# tags:
+#   folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/tags"
+
 augmentation:
   # Visualization settings:
   # visualization_path: "visualizations"  # Path to save augmented images. Uncomment this if you want to save augmented images.
