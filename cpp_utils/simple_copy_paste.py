@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from skimage.filters import gaussian
 import albumentations as A
-from cpp_utils.crop_augmentations import augment_crop
+from ultralytics.data.cpp_utils.crop_augmentations import augment_crop
 import yaml
 # visualization_path: /home/utkutopcuoglu/Projects/ebis/copy-paste-aug/visualization # (str) path to save the visualization images
 
