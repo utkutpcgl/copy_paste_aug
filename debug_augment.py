@@ -106,9 +106,7 @@ for i, item in enumerate(images_info[:num_augmentations]):
     final_aug_image, final_aug_bboxes, final_aug_class_labels = apply_copy_paste_augmentations(
         image=image, 
         processed_bboxes=processed_bboxes, 
-        class_labels=class_labels,
-        resized_shape=(640, 640),
-        ori_shape=(640, 640),
+        class_labels=class_labels
     )
     final_aug_bboxes = np.array(final_aug_bboxes, dtype=np.float32)
     final_aug_class_labels = np.array(final_aug_class_labels, dtype=np.float32)
@@ -118,4 +116,4 @@ for i, item in enumerate(images_info[:num_augmentations]):
     output_filename = f"augmented_{i}.jpg"
     output_path = os.path.join(debug_folder, output_filename)
     cv2.imwrite(output_path, vis_image)
-    print(f"Saved {output_path} with updated bounding boxes: {final_aug_bboxes} and updated class labels: {final_aug_class_labels}") 
+    # print(f"Saved {output_path} with updated bounding boxes: {final_aug_bboxes} and updated class labels: {final_aug_class_labels}") 
