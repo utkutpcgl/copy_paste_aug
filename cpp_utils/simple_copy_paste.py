@@ -32,6 +32,9 @@ tags_config = copy_paste_config.get("tags", {})
 # visualization_path = augmentation_config.get("visualization_path", None)
 
 class SelectiveCopyPaste(A.DualTransform):
+    augmented_count = 0
+
+
     def __init__(
         self,
         folder,
@@ -42,7 +45,6 @@ class SelectiveCopyPaste(A.DualTransform):
         p=1,
         always_apply=False,
         class_id=None,
-        obj_size_scale=1,
         max_occlude_ratio=0.5,
     ):
         """
@@ -56,20 +58,34 @@ class SelectiveCopyPaste(A.DualTransform):
             always_apply (bool): If True, the transform is always applied.
         """
         super(SelectiveCopyPaste, self).__init__(p, always_apply)
+        self.initial_p = p  # store the initial probability for linear decay
         self.folder = folder
         self.max_paste_objects = max_paste_objects
         self.blend = blend
         self.sigma = sigma
         self.max_attempts = max_attempts
-        self.obj_size_scale = obj_size_scale
         self.max_occlude_ratio = max_occlude_ratio
+        self.object_class = class_id
+
         # Preload list of valid image files.
         self.object_files = [
             os.path.join(folder, f)
             for f in os.listdir(folder)
             if f.lower().endswith(('.png', '.jpg', '.jpeg'))
         ]
-        self.object_class = class_id
+
+        # Set up new long-edge ratio parameters based on the object class.
+        # For hands (class_id == 3) we use tag ratios; for tags (class_id == 0) we use hand ratios.
+        if self.object_class == 3:
+            self.min_long_edge_ratio = hands_inhouse_config.get("hand_min_long_edge_ratio", 0.1)
+            self.max_long_edge_ratio = hands_inhouse_config.get("hand_max_long_edge_ratio", 0.6)
+        elif self.object_class == 0:
+            self.min_long_edge_ratio = tags_config.get("tag_min_long_edge_ratio", 0.2)
+            self.max_long_edge_ratio = tags_config.get("tag_max_long_edge_ratio", 0.66)
+        else:
+            # Use a default ratio if no specific rule is defined.
+            self.min_long_edge_ratio = 0.2
+            self.max_long_edge_ratio = 0.66
 
     @staticmethod
     def check_overlap(bbox1, bbox2):
@@ -155,7 +171,7 @@ class SelectiveCopyPaste(A.DualTransform):
                     return False
         return True
 
-    def apply(self, image, bboxes, class_labels, resized_shape=None, ori_shape=None, debug_crops=False):
+    def apply(self, image, bboxes, class_labels):
         """
         Paste object crops onto the image while avoiding overlap with existing
         or previously pasted objects of class self.object_class.
@@ -164,8 +180,6 @@ class SelectiveCopyPaste(A.DualTransform):
             image (np.ndarray): The target (grayscale) image.
             bboxes (np.ndarray): Array of bounding boxes (each as [x1, y1, x2, y2]) in pixel coordinates.
             class_labels (np.ndarray): Array of class labels corresponding to each bbox.
-            resized_shape (tuple, optional): The shape (height, width) of the resized template image.
-            ori_shape (tuple, optional): The original shape (height, width) of the template image.
             
         Returns:
             tuple: (image (np.ndarray), updated_bboxes (np.ndarray), updated_class_labels (np.ndarray))
@@ -184,26 +198,18 @@ class SelectiveCopyPaste(A.DualTransform):
             # Randomly select an object crop.
             obj_file = random.choice(self.object_files)
             obj_img = cv2.imread(obj_file, cv2.IMREAD_UNCHANGED)
-            assert obj_img is not None
+            assert obj_img is not None, f"Failed to read {obj_file}"
             assert obj_img.shape[-1] == 4, "Object image must have 4 channels (BGR + alpha)."
 
-            # Immediately after reading, resize the object if the template image was resized.
-            if resized_shape is not None and ori_shape is not None:
-                assert isinstance(resized_shape, (tuple, list)) and len(resized_shape) == 2, \
-                    "resized_shape must be a tuple of (height, width)"
-                assert isinstance(ori_shape, (tuple, list)) and len(ori_shape) == 2, \
-                    "ori_shape must be a tuple of (height, width)"
-                # ori_h, ori_w = ori_shape
-                # resized_h, resized_w = resized_shape
-                ori_max = max(ori_shape)
-                resized_max = max(resized_shape)
-                scale = resized_max / ori_max
-                new_obj_w = int(obj_img.shape[1] * scale * self.obj_size_scale)
-                new_obj_h = int(obj_img.shape[0] * scale * self.obj_size_scale)
-                obj_img = cv2.resize(obj_img, (new_obj_w, new_obj_h), interpolation=cv2.INTER_LINEAR)
-
             # Apply the augmentation pipeline to the cropped object.
-            obj_img = augment_crop(obj_img, debug_crops=debug_crops)
+            # Pass the new long-edge ratio parameters and derive target_long_edge from the target image.
+            obj_img = augment_crop(
+                obj_img,
+                debug_crops=DEBUG_CROPS_CONFIG,
+                min_long_edge_ratio=self.min_long_edge_ratio,
+                max_long_edge_ratio=self.max_long_edge_ratio,
+                target_long_edge=max(h_img, w_img)
+            )
 
             if obj_img is None: # NOTE if the augmented crop is None, skip this object. Can happen if no alpha channel is found in the object (after cropping or before.)
                 continue
@@ -301,7 +307,7 @@ class SelectiveCopyPaste(A.DualTransform):
 
     def __call__(self, image, bboxes=None, **kwargs):
         """
-        Convert input image to grayscale and then apply the selective copy-paste transform.
+        Convert input image to grayscale and apply the selective copy-paste transform.
         The input bounding boxes are expected to be in [x1, y1, x2, y2] format, optionally with a class_id as a 5th element.
         Returns a dict with the transformed (grayscale) image and updated bounding boxes and class labels.
 
@@ -319,6 +325,24 @@ class SelectiveCopyPaste(A.DualTransform):
                   The returned box will be in yolo x,y,w,h format, as albumentation internally applies
                     self.postprocess(data) automatically converts the boxes to yolo format.
         """
+        SelectiveCopyPaste.augmented_count += 1
+
+        # Update the transformation probability (p) using linear decay if enabled.
+        if copy_paste_config.get("linear_decay", False):
+            max_epochs = copy_paste_config.get("max_epochs")
+            total_samples = copy_paste_config.get("total_samples")
+            assert max_epochs is not None, "max_epochs must be set in config for linear_decay"
+            assert total_samples is not None, "total_samples must be set in config for linear_decay"
+            current_iter = SelectiveCopyPaste.augmented_count
+            max_iter = max_epochs * total_samples
+            if current_iter >= max_iter:
+                self.p = 0.0
+            else:
+                self.p = self.initial_p * (1 - current_iter / max_iter)
+            self.p = max(self.p , 0.01) # NOTE never close the aug fully.
+            if current_iter % 5000 == 0:
+                print(f"Current iteration: {current_iter}, Current probability: {self.p}")
+
         # Convert the input image to grayscale if it is not already.
 
         assert image.shape[-1] == 3 or image.ndim == 2, "Input image must have 2 or 3 channels (BGR or grayscale)."
@@ -359,9 +383,6 @@ class SelectiveCopyPaste(A.DualTransform):
             image,
             bboxes_coords,
             class_labels=bboxes_labels,
-            resized_shape=kwargs.get("resized_shape"),
-            ori_shape=kwargs.get("ori_shape"),
-            debug_crops=DEBUG_CROPS_CONFIG,
         )
         if updated_bboxes.shape[0] > 0:
             merged = np.hstack((updated_bboxes, updated_class_labels.reshape(-1, 1)))
@@ -391,7 +412,6 @@ copy_paste_hand_inhouse = A.Compose(
             max_attempts=hands_inhouse_config.get("max_attempts", 20),
             p=hands_inhouse_config.get("p", 0.3),
             class_id=hands_inhouse_config.get("class_id", 3),
-            obj_size_scale=hands_inhouse_config.get("obj_size_scale", 1.7),
             max_occlude_ratio=hands_inhouse_config.get("max_occlude_ratio", 0.5)
         )
     ],
@@ -408,7 +428,6 @@ copy_paste_hand_public = A.Compose(
             max_attempts=hands_public_config.get("max_attempts", 20),
             p=hands_public_config.get("p", 0.6),
             class_id=hands_public_config.get("class_id", 3),
-            obj_size_scale=hands_public_config.get("obj_size_scale", 1.7),
             max_occlude_ratio=hands_public_config.get("max_occlude_ratio", 0.5)
         )
     ],
@@ -425,7 +444,6 @@ copy_paste_tag = A.Compose(
             max_attempts=tags_config.get("max_attempts", 20),
             p=tags_config.get("p", 0.9),
             class_id=tags_config.get("class_id", 0),
-            obj_size_scale=tags_config.get("obj_size_scale", 1.0),
             max_occlude_ratio=tags_config.get("max_occlude_ratio", 0.5)
         )
     ],
@@ -434,7 +452,7 @@ copy_paste_tag = A.Compose(
 
 
 
-def apply_copy_paste_augmentations(image, processed_bboxes, class_labels, resized_shape=None, ori_shape=None):
+def apply_copy_paste_augmentations(image, processed_bboxes, class_labels):
     """
     Applies hand and tag copy-paste augmentations to the given image in a randomly determined order.
     
@@ -448,8 +466,6 @@ def apply_copy_paste_augmentations(image, processed_bboxes, class_labels, resize
         processed_bboxes (list or np.ndarray): List of bounding boxes in YOLO format 
             (each as [x_center, y_center, width, height]).
         class_labels (list): List of class labels corresponding to each bounding box.
-        resized_shape (tuple, optional): The shape (height, width) of the resized template image.
-        ori_shape (tuple, optional): The original shape (height, width) of the template image.
         
     Returns:
         final_aug_image (np.ndarray): The augmented image.
@@ -489,8 +505,6 @@ def apply_copy_paste_augmentations(image, processed_bboxes, class_labels, resize
             image=result["image"],
             bboxes=result["bboxes"],
             class_labels=result["class_labels"],
-            resized_shape=resized_shape,
-            ori_shape=ori_shape,
         )
 
     final_aug_image = result["image"]
@@ -619,13 +633,10 @@ class CopyPasteUtku:
             # label["instances"]["bbox_areas"] gives the bounding bbox areas. (float32 numpy array)
             # label["img"] gives the image. (uint8 numpy array)
 
-            NOTE orishape and resized_shape are coming from the first image (out of 4) when mosaic is applied.
         """
         image = labels["img"]
         bboxes = labels["instances"].bboxes
         class_labels = labels["cls"]
-        resized_shape = labels["resized_shape"]
-        ori_shape = labels["ori_shape"]
 
         # Ensure that bboxes and class_labels are in the expected dtype.
         assert isinstance(bboxes, np.ndarray) and bboxes.dtype == np.float32, "Bboxes must be a np.ndarray with dtype float32"
@@ -649,8 +660,6 @@ class CopyPasteUtku:
             image,
             bboxes_normalized,
             class_labels,
-            resized_shape=resized_shape,
-            ori_shape=ori_shape,
         )
 
         new_bboxes_denorm = new_bboxes.copy()

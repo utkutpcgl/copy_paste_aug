@@ -9,15 +9,19 @@ augmentation:
 
   # Copy-Paste Augmentation Pipelines:
   copy_paste:
+    linear_decay: true       # Enable linear decay of augmentation probability.
+    max_epochs: 50           # Maximum number of epochs.
+    total_samples: 20000      # Number of samples per epoch (total image numbers).
     hands_inhouse:
       folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_inhouse"
       max_paste_objects: 1
       blend: true
       sigma: 1
       max_attempts: 20
-      p: 0.05
+      p: 0.0
       class_id: 3
-      obj_size_scale: 1.5
+      hand_min_long_edge_ratio: 0.1     # New: object (hand) will use tag ratios.
+      hand_max_long_edge_ratio: 0.6
       max_occlude_ratio: 0.2
     hands_public:
       folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_public"
@@ -25,9 +29,10 @@ augmentation:
       blend: true
       sigma: 1
       max_attempts: 20
-      p: 0.2
+      p: 0
       class_id: 3
-      obj_size_scale: 1.5
+      hand_min_long_edge_ratio: 0.1
+      hand_max_long_edge_ratio: 0.6
       max_occlude_ratio: 0.2
     tags:
       folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/tags"
@@ -35,27 +40,33 @@ augmentation:
       blend: true
       sigma: 1
       max_attempts: 20
-      p: 0.4
+      p: 0.9
       class_id: 0
-      obj_size_scale: 1.0
+      tag_min_long_edge_ratio: 0.05    # New: object (tag) will use hand ratios.
+      tag_max_long_edge_ratio: 0.5
       max_occlude_ratio: 0.3
 
 # Crop augmentation pipelines parameters.
+# TODO add local light changes to objects during augmentations.
+# TODO increase the light augmentations.
 crop_augmentations:
   pixel_transforms:
     random_brightness_contrast:
-      brightness_limit: [0, 0.2]
-      contrast_limit: [0, 0.2]
-      p: 0.1
+      brightness_limit: [-0.15, 0.3]  # allow for both darker and brighter variations
+      contrast_limit: [-0.15, 0.3]
+      p: 0.2
     hue_saturation_value:
-      hue_shift_limit: [0, 20]
-      sat_shift_limit: [0, 30]
-      val_shift_limit: [0, 20]
-      p: 0.1
+      hue_shift_limit: [-5, 15]       # subtle hue variations
+      sat_shift_limit: [-10, 20]       # subtle saturation changes
+      val_shift_limit: [-5, 15]       # subtle brightness (value) adjustments
+      p: 0.15
     rgb_shift:
-      r_shift_limit: [0, 10]
-      g_shift_limit: [0, 10]
-      b_shift_limit: [0, 10]
+      r_shift_limit: [-5, 10]
+      g_shift_limit: [-5, 10]
+      b_shift_limit: [-5, 10]
+      p: 0.15
+    random_gamma:                   # newly added gamma correction for additional light variation
+      gamma_limit: [80, 120]
       p: 0.1
     gaussian_blur:
       p: 0.1
@@ -74,26 +85,22 @@ crop_augmentations:
     horizontal_flip:
       p: 0.5
     vertical_flip:
-      p: 0.3
+      p: 0.5
     rotate_with_expansion:
       limit: [-90, 90]
       border_mode: "BORDER_CONSTANT"
       value: [0, 0, 0, 0]
       mask_value: [0, 0, 0, 0]
-      p: 0.8
+      p: 1
     affine:
-      translate_percent: [-0.0625, 0.0625]
-      scale: [0.9, 1.1]
-      rotate: [-15, 15]
+      translate_percent: [-0.1, 0.1]    # Increased from [-0.0625, 0.0625] for more lateral shift
+      scale: [0.8, 1.2]                 # Wider scaling range for more 2D shape alteration
+      rotate: [-15, 15]                 # Rotation kept the same as rotate_with_expansion covers rotation
       border_mode: "BORDER_CONSTANT"
-      p: 0.3
+      p: 0.5                          # Increased probability to enhance the effect
     perspective:
-      scale: [0.05, 0.1]
-      p: 0.15
-
-  random_resize:
-    scale_range: [0.4, 1.2]
-    p: 1
+      scale: [0.1, 0.25]              # Larger scale range for stronger 3D-like warps
+      p: 0.8                        # Increased probability to apply perspective changes more often
 
   random_crop:
     min_crop: 0.8

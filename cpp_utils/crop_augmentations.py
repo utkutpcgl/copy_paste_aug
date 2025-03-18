@@ -106,6 +106,22 @@ class RandomCropCustom(A.DualTransform):
     def get_transform_init_args_names(self):
         return ("min_crop", "p")
 
+class RandomGamma(A.ImageOnlyTransform):
+    def __init__(self, gamma_limit=(80, 120), p=0.3, always_apply=False):
+        super(RandomGamma, self).__init__(always_apply, p)
+        self.gamma_limit = gamma_limit
+
+    def get_params(self):
+        gamma_value = random.uniform(self.gamma_limit[0], self.gamma_limit[1])
+        gamma = gamma_value / 100.0  # e.g., 80 becomes 0.8 and 120 becomes 1.2
+        return {"gamma": gamma}
+
+    def apply(self, img, gamma=1.0, **params):
+        table = np.array([((i / 255.0) ** gamma) * 255 for i in np.arange(256)]).astype("uint8")
+        return cv2.LUT(img, table)
+    
+    def get_transform_init_args_names(self):
+        return ("gamma_limit", "p")
 
 
 # -----------------------------------------------------------------------------
@@ -123,6 +139,7 @@ pixel_config = crop_config.get("pixel_transforms", {})
 rb_config = pixel_config.get("random_brightness_contrast", {})
 hs_config = pixel_config.get("hue_saturation_value", {})
 rgb_config = pixel_config.get("rgb_shift", {})
+rg_config = pixel_config.get("random_gamma", {})
 gb_config = pixel_config.get("gaussian_blur", {})
 gn_config = pixel_config.get("gauss_noise", {})
 ic_config = pixel_config.get("image_compression", {})
@@ -145,21 +162,25 @@ pixel_transforms = A.Compose([
         r_shift_limit=rgb_config.get("r_shift_limit", 10),
         g_shift_limit=rgb_config.get("g_shift_limit", 10),
         b_shift_limit=rgb_config.get("b_shift_limit", 10),
-        p=rgb_config.get("p", 0.2)
+        p=rgb_config.get("p", 0.1)
     ),
-    A.GaussianBlur(p=gb_config.get("p", 0.2)),
+    RandomGamma(
+        gamma_limit=tuple(rg_config.get("gamma_limit", [80, 120])),
+        p=rg_config.get("p", 0.3)
+    ),
+    A.GaussianBlur(p=gb_config.get("p", 0.1)),
     A.GaussNoise(
-        std_range=tuple(gn_config.get("std_range", [0.03, 0.15])),
-        p=gn_config.get("p", 0.2)
+        std_range=tuple(gn_config.get("std_range", [0.03, 0.1])),
+        p=gn_config.get("p", 0.1)
     ),
     A.ImageCompression(
-        quality_range=tuple(ic_config.get("quality_range", [75, 100])),
-        p=ic_config.get("p", 0.2)
+        quality_range=tuple(ic_config.get("quality_range", [80, 100])),
+        p=ic_config.get("p", 0.1)
     ),
     A.CLAHE(
         clip_limit=clahe_config.get("clip_limit", 2),
         tile_grid_size=tuple(clahe_config.get("tile_grid_size", [8, 8])),
-        p=clahe_config.get("p", 0.2)
+        p=clahe_config.get("p", 0.1)
     )
 ])
 
@@ -192,7 +213,7 @@ persp_scale = tuple(persp_config.get("scale", [0.05, 0.1]))
 persp_p = persp_config.get("p", 0.2)
 
 # Get random resize/crop config.
-random_resize_config = crop_config.get("random_resize", {})
+# random_resize_config = crop_config.get("random_resize", {})
 random_crop_config = crop_config.get("random_crop", {})
 
 
@@ -227,10 +248,10 @@ spatial_transforms = A.Compose([
     )
 ])
 
-resize_transform = RandomResize(
-    scale_range=tuple(random_resize_config.get("scale_range", [0.3, 1.2])),
-    p=random_resize_config.get("p", 1)
-)
+# resize_transform = RandomResize(
+#     scale_range=tuple(random_resize_config.get("scale_range", [0.3, 1.2])),
+#     p=random_resize_config.get("p", 1)
+# )
 
 
 random_crop = RandomCropCustom(
@@ -242,42 +263,48 @@ random_crop = RandomCropCustom(
 # -----------------------------------------------------------------------------
 # The augment_crop function remains mostly the same, but now uses the updated transforms.
 # -----------------------------------------------------------------------------
-def augment_crop(obj_img, debug_crops=False):
+def augment_crop(obj_img, debug_crops=False, min_long_edge_ratio=0.2, max_long_edge_ratio=0.66, target_long_edge=640):
     """
     Applies all the augmentations defined in the augmentation menu (loaded from config)
     to the cropped segmentation.
 
     Args:
         obj_img (np.ndarray): Cropped object image with 4 channels (BGR + alpha).
+        debug_crops (bool): Save augmented object crops for debugging if True.
+        min_long_edge_ratio (float): Minimum ratio (to target_long_edge) for the object's long side.
+        max_long_edge_ratio (float): Maximum ratio (to target_long_edge) for the object's long side.
+        target_long_edge (int): The reference long edge (e.g. max(target image dimension)).
 
     Returns:
-        np.ndarray: Augmented object image (4 channels: BGR + alpha).
+        np.ndarray: Augmented object image (4 channels: BGR + alpha) or None if augmentation fails.
     """
-    if not obj_img.shape[-1] == 4:
+    if obj_img.shape[-1] != 4:
         print("Object image must have 4 channels (BGR + alpha). Returning None. Object shape: ", obj_img.shape)
-        return None  # Return None if requirements are not met.
-    
-    # Separate the BGR image and the alpha mask.
+        return None
+
+    # --- Custom resizing step based on long-edge ratio ---
+    # Determine the current long edge of the cropped object.
+    current_long_edge = max(obj_img.shape[:2])
+    # Choose a desired long edge randomly between the provided ratios of target_long_edge.
+    desired_long_edge = random.uniform(target_long_edge * min_long_edge_ratio, target_long_edge * max_long_edge_ratio)
+    scale_factor = desired_long_edge / current_long_edge
+    new_w = max(1, int(obj_img.shape[1] * scale_factor))
+    new_h = max(1, int(obj_img.shape[0] * scale_factor))
+    obj_img = cv2.resize(obj_img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+    # --- Continue with existing pixel- and spatial-level augmentations ---
     bgr_img = obj_img[:, :, :3]
     alpha_mask = obj_img[:, :, 3]
-    
-    # 1. Apply pixel-level augmentations to the BGR image.
-    pixel_bgr = pixel_transforms(image=bgr_img)['image']
 
-    # 2. Combine the pixel-augmented BGR with the unchanged alpha mask.
+    pixel_bgr = pixel_transforms(image=bgr_img)['image']
     pixel_image = np.dstack([pixel_bgr, alpha_mask])
-    
-    # 3. Apply spatial-level transforms to the entire image.
     spatial_pixel_image = spatial_transforms(image=pixel_image)['image']
-    
-    # 4. Apply random resizing.
-    resized_spatial_pixel_image = resize_transform(image=spatial_pixel_image)['image']
-    
-    # 5. Apply random cropping.
-    cropped_resized_spatial_pixel_image = random_crop(image=resized_spatial_pixel_image)['image']
 
     # Crop the image so that only the actual object is strictly cropped,
     # based on the alpha mask. Transparent pixels should not fill the box edges.
+    cropped_resized_spatial_pixel_image = random_crop(image=spatial_pixel_image)['image']
+
+    # Crop the image so that only the actual object is retained (using the alpha mask).
     alpha_final = cropped_resized_spatial_pixel_image[:, :, 3]
     ys, xs = np.where(alpha_final > 0)
     
@@ -289,6 +316,7 @@ def augment_crop(obj_img, debug_crops=False):
     y_min, y_max = ys.min(), ys.max()
     x_min, x_max = xs.min(), xs.max()
     cropped_resized_spatial_pixel_image = cropped_resized_spatial_pixel_image[y_min:y_max+1, x_min:x_max+1]
+
 
     # Save the augmented object for debugging if required.
     if debug_crops:
