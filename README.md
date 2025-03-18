@@ -175,3 +175,7 @@ Modify the trainer.py code as follows, in the BaseTrainer class, _do_train metho
                 # TODO visualize the batch here with the yolo annotation bounding boxes (with classes) to validate copy paste augmentation is working as desired.
                 self.plot_training_samples(batch, ni)
 ```
+
+
+# UPDATES IN THE CODE
+If you update copy paste most probably replacing cpp_utils will be sufficient in the ultralytics repo.
