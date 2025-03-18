@@ -13,7 +13,7 @@ augmentation:
     max_epochs: 50           # Maximum number of epochs.
     total_samples: 20000      # Number of samples per epoch (total image numbers).
     hands_inhouse:
-      folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_inhouse"
+      folder: "/content/drive/MyDrive/DATASETS/EBİS/CROPS/250116_EBIS_RFID_TAG_DATASET_V10_80_20/hands_inhouse"
       max_paste_objects: 1
       blend: true
       sigma: 1
@@ -24,7 +24,7 @@ augmentation:
       hand_max_long_edge_ratio: 0.6
       max_occlude_ratio: 0.2
     hands_public:
-      folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/hands_public"
+      folder: "/content/drive/MyDrive/DATASETS/EBİS/CROPS/hagrid_hand_crops/hands_public"
       max_paste_objects: 2
       blend: true
       sigma: 1
@@ -35,7 +35,7 @@ augmentation:
       hand_max_long_edge_ratio: 0.6
       max_occlude_ratio: 0.2
     tags:
-      folder: "/home/utkutopcuoglu/Projects/ebis/copy-paste-aug/tags"
+      folder: "/content/drive/MyDrive/DATASETS/EBİS/CROPS/250116_EBIS_RFID_TAG_DATASET_V10_80_20/tags-good-bad/good"
       max_paste_objects: 3
       blend: true
       sigma: 1
