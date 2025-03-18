@@ -22,7 +22,7 @@ augmentation:
       class_id: 3
       hand_min_long_edge_ratio: 0.1     # New: object (hand) will use tag ratios.
       hand_max_long_edge_ratio: 0.6
-      max_occlude_ratio: 0.2
+      max_occlude_ratio: 0.3
     hands_public:
       folder: "/content/drive/MyDrive/DATASETS/EBİS/CROPS/hagrid_hand_crops/hands_public"
       max_paste_objects: 2
@@ -33,7 +33,7 @@ augmentation:
       class_id: 3
       hand_min_long_edge_ratio: 0.1
       hand_max_long_edge_ratio: 0.6
-      max_occlude_ratio: 0.2
+      max_occlude_ratio: 0.3
     tags:
       folder: "/content/drive/MyDrive/DATASETS/EBİS/CROPS/250116_EBIS_RFID_TAG_DATASET_V10_80_20/tags-good-bad/good"
       max_paste_objects: 3
@@ -44,7 +44,7 @@ augmentation:
       class_id: 0
       tag_min_long_edge_ratio: 0.05    # New: object (tag) will use hand ratios.
       tag_max_long_edge_ratio: 0.5
-      max_occlude_ratio: 0.3
+      max_occlude_ratio: 0.4
 
 # Crop augmentation pipelines parameters.
 # TODO add local light changes to objects during augmentations.
